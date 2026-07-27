@@ -1,1 +1,9 @@
 .DS_Store
+
+# Jamais de données machine ou patient dans git.
+# Les exemples publics pymedphys sont retéléchargeables via
+# exploration/verification_chaine.py ; les TRF/RT Plan réels ne doivent
+# en aucun cas être versionnés.
+*.trf
+*.dcm
+data/
