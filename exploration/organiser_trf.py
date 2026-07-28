@@ -7,9 +7,11 @@ donnée patient n'est extraite, aucun fichier n'est déplacé ni modifié.
     python3 exploration/organiser_trf.py /chemin/vers/dossier --sortie rapport/
     python3 exploration/organiser_trf.py *.zip --ecart-max 1800
 
-Produit deux tableaux CSV :
-  fichiers.csv  une ligne par TRF, avec ses métadonnées
-  seances.csv   une ligne par séance reconstituée
+Produit deux ou trois tableaux CSV :
+  fichiers.csv    une ligne par TRF décodé, avec ses métadonnées
+  seances.csv     une ligne par séance reconstituée
+  illisibles.csv  une ligne par TRF rejeté, avec son motif et ses premiers
+                  octets — écrit seulement s'il y en a
 
 Par défaut rien n'est déplacé ni copié : les séances n'existent que comme lignes
 de `seances.csv`, dont la colonne `fichiers` liste leur composition. L'option
@@ -444,9 +446,13 @@ def main():
         try:
             resumes.append(resumer(octets, nom, origine))
         except TrfIllisible as e:
-            illisibles.append((nom, str(e)))
+            illisibles.append({"fichier": nom, "motif": str(e),
+                               "octets": len(octets),
+                               "premiers_octets": octets[:24].hex(" ")})
         except Exception as e:  # un fichier abîmé ne doit pas tout arrêter
-            illisibles.append((nom, f"{type(e).__name__}: {e}"))
+            illisibles.append({"fichier": nom, "motif": f"{type(e).__name__}: {e}",
+                               "octets": len(octets),
+                               "premiers_octets": octets[:24].hex(" ")})
 
     if not resumes:
         print("Aucun fichier TRF exploitable trouvé.", file=sys.stderr)
@@ -471,6 +477,9 @@ def main():
     ]
     ecrire_csv(sortie / "fichiers.csv", sorted(resumes, key=lambda r: r["debut_utc"]), cols_fichiers)
     ecrire_csv(sortie / "seances.csv", seances, cols_seances)
+    if illisibles:
+        ecrire_csv(sortie / "illisibles.csv", illisibles,
+                   ["fichier", "motif", "octets", "premiers_octets"])
 
     machines = sorted({r["machine"] for r in resumes})
     dates = sorted(r["debut_utc"][:10] for r in resumes)
@@ -506,11 +515,18 @@ def main():
               + ", ".join(inconnues[:6]))
 
     if illisibles:
-        print("\nFichiers non décodés :")
-        for nom, motif in illisibles[:10]:
-            print(f"  {nom} — {motif}")
-        if len(illisibles) > 10:
-            print(f"  … et {len(illisibles) - 10} autres")
+        motifs = {}
+        for i in illisibles:
+            cle = i["motif"].split(":")[0].strip()
+            motifs[cle] = motifs.get(cle, 0) + 1
+        print(f"\nFichiers non décodés ({len(illisibles)}), par motif :")
+        for motif, n in sorted(motifs.items(), key=lambda x: -x[1]):
+            print(f"  {n:>6}  {motif}")
+        if any("date d'en-tête" in m for m in motifs):
+            print("\n  ⚠ « date d'en-tête inattendue » en nombre est la signature connue")
+            print("    d'un changement de format d'en-tête (cf. pymedphys#1890, Integrity")
+            print("    4.1.0.0). La liste complète, avec les premiers octets de chaque")
+            print("    fichier, est dans illisibles.csv — de quoi reprendre le parsing.")
 
     if doutes:
         print("\nSéances à vérifier :")
@@ -526,7 +542,8 @@ def main():
               f"{len(seances)} dossiers sous {args.extraire}")
         print("  ⚠ ce sont des copies de données patient : à protéger comme les originaux.")
 
-    print(f"\nÉcrit : {sortie / 'fichiers.csv'}  et  {sortie / 'seances.csv'}")
+    produits = ["fichiers.csv", "seances.csv"] + (["illisibles.csv"] if illisibles else [])
+    print(f"\nÉcrit dans {sortie} : " + ", ".join(produits))
     print("Ces tableaux contiennent des identifiants de champ de traitement : "
           "à traiter comme des données sensibles.")
     return 0
