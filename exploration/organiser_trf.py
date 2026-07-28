@@ -222,6 +222,9 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
     # quand il est renseigné.
     resume["mu"] = resume["mu_corps"] if resume["mu_corps"] is not None else resume["mu_entete"]
     resume["entete_sans_mu"] = resume["mu_entete"] == 0
+    # Un enregistrement peut ne porter aucune dose : imagerie, mise en place,
+    # séance avortée avant le premier rayonnement. Ce n'est pas un traitement.
+    resume["delivrance"] = (resume["mu"] or 0) >= 1.0
 
     # L'état machine sert à ne juger la géométrie que pendant l'irradiation :
     # entre deux faisceaux, le bras tourne et fausserait la détection d'arc.
@@ -458,6 +461,22 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
         total_attendu = reference.get(cle, 0.0)
         raison = None
 
+        if not r.get("delivrance", True):
+            # Entrée isolée, mais transparente pour le chaînage : un cliché
+            # d'imagerie glissé entre deux fragments ne doit pas couper la
+            # séance en cours.
+            isole = {
+                "seance": len(seances) + 1, "machine": r["machine"],
+                "champ_nom": r["champ_nom"], "champ_etiquette": r["champ_etiquette"],
+                "debut_utc": r["debut_utc"], "fin_utc": r["fin_utc"],
+                "fichiers": [r["fichier"]], "nb_fichiers": 1,
+                "mu_cumul": r.get("mu") or 0.0, "mu_reference": round(total_attendu, 1),
+                "issue": "sans_dose", "etat_final": r.get("etat_final"),
+                "ouverture": "enregistrement sans dose",
+            }
+            seances.append(isole)
+            r["seance"] = isole["seance"]
+            continue                       # `courante` reste intacte
         if courante is None:
             raison = "premier fichier"
         elif courante["machine"] != r["machine"]:
@@ -497,7 +516,9 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
                 "ouverture": raison,
             }
             seances.append(courante)
+            active = courante
         else:
+            active = courante
             courante["fichiers"].append(r["fichier"])
             courante["nb_fichiers"] += 1
             courante["mu_cumul"] += r.get("mu") or 0.0
@@ -505,7 +526,7 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
             courante["issue"] = r.get("issue")
             courante["etat_final"] = r.get("etat_final")
 
-        r["seance"] = courante["seance"]
+        r["seance"] = active["seance"]
 
     for s in seances:
         s["mu_cumul"] = round(s["mu_cumul"], 1)
@@ -513,7 +534,9 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
         s["completude"] = round(s["mu_cumul"] / ref, 3) if ref else None
         s["fichiers"] = " | ".join(s["fichiers"])
         s["doute"] = ""
-        if s["issue"] == "interrompue":
+        if s["issue"] == "sans_dose":
+            s["doute"] = "aucune dose enregistrée : ce n'est pas un traitement"
+        elif s["issue"] == "interrompue":
             s["doute"] = (
                 f"se termine sur « {s['etat_final']} » : la suite manque, "
                 "ou la séance a été abandonnée"
@@ -594,7 +617,8 @@ def main():
     cols_fichiers = [
         "seance", "fichier", "machine", "version", "champ_etiquette", "champ_nom",
         "debut_utc", "fin_utc", "duree_s", "echantillons", "mu", "mu_entete",
-        "mu_corps", "entete_sans_mu", "ecart_mu_entete", "mu_incoherent", "faisceaux",
+        "delivrance", "mu_corps", "entete_sans_mu", "ecart_mu_entete",
+        "mu_incoherent", "faisceaux",
         "mu_max_faisceau", "mu_brut_min", "mu_brut_max", "part_irradiation",
         "etat_final", "issue",
         "gantry_debut", "gantry_fin", "gantry_min", "gantry_max",
@@ -636,16 +660,31 @@ def main():
     coupes = [r for r in resumes if r.get("coupures")]
     if coupes:
         print(f"  ⚠ {len(coupes)} fichier(s) avec une coupure d'échantillonnage")
+    sans_dose = [r for r in resumes if not r.get("delivrance", True)]
+    if sans_dose:
+        print(f"  {len(sans_dose)} fichier(s) sans dose enregistrée (< 1 MU) — "
+              f"imagerie, mise en place ou séance avortée")
+        etats = {}
+        for r in sans_dose:
+            etats[r.get("etat_final") or "inconnu"] = etats.get(r.get("etat_final") or "inconnu", 0) + 1
+        print("      états finaux : "
+              + ", ".join(f"{k} ({n})" for k, n in sorted(etats.items(), key=lambda x: -x[1])))
+
     muets = [r for r in resumes if r.get("entete_sans_mu")]
     if muets:
-        print(f"  {len(muets)} fichier(s) dont l'en-tête n'annonce aucune MU "
-              f"(total pris dans le corps du fichier)")
+        avec_dose = [r for r in muets if r.get("delivrance")]
+        print(f"  {len(muets)} fichier(s) dont l'en-tête n'annonce aucune MU, "
+              f"dont {len(avec_dose)} portant tout de même une dose")
         etats = {}
         for r in muets:
             cle = r.get("etat_final") or "inconnu"
             etats[cle] = etats.get(cle, 0) + 1
-        print("      états finaux de ces fichiers : "
+        print("      états finaux : "
               + ", ".join(f"{k} ({n})" for k, n in sorted(etats.items(), key=lambda x: -x[1])))
+        if avec_dose:
+            doses = sorted(r["mu"] for r in avec_dose)
+            print(f"      doses relevées dans le corps : min={doses[0]:.1f} "
+                  f"médiane={doses[len(doses) // 2]:.1f} max={doses[-1]:.1f} MU")
 
     discordants = [r for r in resumes if r.get("mu_incoherent")]
     if discordants:
