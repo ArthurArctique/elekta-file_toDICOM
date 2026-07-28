@@ -536,9 +536,15 @@ def main():
         help="au-delà de cet écart en secondes, on ouvre une nouvelle séance (défaut : 1800)",
     )
     analyseur.add_argument(
-        "--diagnostic", action="store_true",
-        help="détaille la structure du compteur de MU de chaque fichier fourni, "
-             "au lieu de produire l'inventaire. Pour comprendre une divergence.",
+        "--diagnostic", nargs="?", type=int, const=3, metavar="N",
+        help="après l'inventaire, détaille la structure du compteur de MU des N "
+             "fichiers dont le total diverge le plus de l'en-tête (3 par défaut). "
+             "Inutile de désigner un fichier : il les trouve lui-même.",
+    )
+    analyseur.add_argument(
+        "--filtre", metavar="MOTIF",
+        help="ne traiter que les fichiers dont le chemin contient ce motif. "
+             "Utile pour cibler un fichier précis à l'intérieur d'un zip.",
     )
     analyseur.add_argument(
         "--extraire", metavar="DOSSIER",
@@ -552,16 +558,10 @@ def main():
     )
     args = analyseur.parse_args()
 
-    if args.diagnostic:
-        for nom, _, octets in parcourir(args.sources):
-            try:
-                diagnostiquer(octets, nom)
-            except Exception as e:
-                print(f"\n=== {nom} ===\n  illisible : {e}")
-        return 0
-
     resumes, illisibles = [], []
     for n, (nom, origine, octets) in enumerate(parcourir(args.sources), 1):
+        if args.filtre and args.filtre not in nom:
+            continue
         if n % 250 == 0:
             print(f"  … {n} fichiers lus", file=sys.stderr, flush=True)
         try:
@@ -668,6 +668,23 @@ def main():
         print(f"\n{nb} fichier(s) copiés ({octets / 1e6:.0f} Mo) dans "
               f"{len(seances)} dossiers sous {args.extraire}")
         print("  ⚠ ce sont des copies de données patient : à protéger comme les originaux.")
+
+    if args.diagnostic:
+        candidats = sorted(
+            (r for r in resumes if r.get("ecart_mu_entete") is not None),
+            key=lambda r: -abs(r["ecart_mu_entete"]),
+        )[: args.diagnostic]
+        if not candidats:
+            print("\nRien à diagnostiquer : aucun écart mesurable.")
+        else:
+            print(f"\n{'=' * 62}")
+            print(f"DIAGNOSTIC des {len(candidats)} fichiers les plus divergents")
+            print(f"{'=' * 62}")
+            for r in candidats:
+                try:
+                    diagnostiquer(relire(r["origine"]), r["fichier"])
+                except Exception as e:
+                    print(f"\n=== {r['fichier']} ===\n  illisible : {e}")
 
     produits = ["fichiers.csv", "seances.csv"] + (["illisibles.csv"] if illisibles else [])
     print(f"\nÉcrit dans {sortie} : " + ", ".join(produits))
