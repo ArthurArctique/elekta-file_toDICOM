@@ -194,7 +194,7 @@ nombre de caractères, puis viennent les caractères.
 
 | Offset | Octet de longueur | Contenu | Signification |
 |---|---|---|---|
-| 0 | `13` = 19 | `20/04/28 21:53:39 Z` | date **UTC** |
+| 0 | `13` = 19 | `20/04/28 21:53:39 Z` | date **UTC** — c'est la **fin** de l'enregistrement (voir plus bas) |
 | 20 | `06` = 6 | `+10:00` | décalage horaire local |
 | 27 | `08` = 8 | `1-1/VMAT` | `label/nom` du champ |
 | 36 | `04` = 4 | `2619` | **numéro de série de la machine** |
@@ -210,6 +210,31 @@ nombre de caractères, puis viennent les caractères.
 
 L'en-tête fait donc 57 + 4 × 350 = **1457 octets**. Il est de longueur variable,
 puisqu'il dépend des noms et du nombre de colonnes.
+
+> ⚠️ **La date de l'en-tête marque la FIN de l'enregistrement, pas son début.**
+> Vérifié en confrontant les écarts de date à l'horodatage machine (§ ci-dessous)
+> sur six fichiers : l'hypothèse « fin » colle à **0,72 s** près en médiane,
+> l'hypothèse « début » se trompe de **60 s**. Le fichier
+> `20_04_28 21_53_39 Z` couvre donc 21:51:50 → 21:53:39, et non l'inverse.
+> C'est contre-intuitif, et ça compte dès qu'on veut apparier un log à un
+> horodatage de traitement.
+
+### Le préfixe de ligne : un horodatage que pymedphys n'interprète pas
+
+À partir de la version d'encodage 2, chaque ligne commence par **8 octets** que
+pymedphys conserve tels quels sous les noms `unknown1` à `unknown4`. Lus comme un
+seul entier 64 bits, ils forment un **compteur en millisecondes** :
+
+- strictement croissant, pas médian de **40** — soit l'intervalle d'échantillonnage
+- la durée qu'il donne (108,64 s) coïncide **au millième** avec le comptage de lignes
+- il est **continu d'un fichier à l'autre** sur toute la machine
+
+pymedphys ne s'en sert pas : il reconstruit le temps par `numéro de ligne × 40 ms`.
+Or 11 à 42 % des intervalles réels ne font pas exactement 40 ms (ils vont de 37 à
+41). L'écart reste faible — **4 ms au maximum**, sans dérive — mais une vraie
+coupure d'échantillonnage serait, elle, silencieusement écrasée en un intervalle
+régulier. Le [lecteur TRF](exploration/lecteur_trf.html) de ce dépôt décode ce
+compteur et affiche l'écart.
 
 ### Le schéma : le fichier décrit lui-même son contenu
 

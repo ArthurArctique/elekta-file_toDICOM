@@ -1,0 +1,642 @@
+<title>Lecteur de log Elekta TRF</title>
+
+<script id="cfg" type="application/json">{"time_increment":0.04,"linac_state_codes":{"16":"Closed","34":"State Code Unknown","39":"Move Only","40":"Pause","41":"Intersegment","42":"Radiation On","43":"Interupted","44":"Interupted Ready","45":"Terminated Checking","46":"Terminated Ok","47":"Terminated Fault"},"wedge_codes":{"0":"Moving","1":"In","2":"Out"},"version_row":{"1":{"dtype":"int16","offset":0,"lg_scale":1},"2":{"dtype":"int16","offset":8,"lg_scale":1},"3":{"dtype":"int16","offset":8,"lg_scale":1},"4":{"dtype":"int32","offset":8,"lg_scale":2}},"item_part_names":{"2240_111":"Control point/Actual Value (None)","2177_100":"Energy Cal Block/Set (None)","2543_111":"Linac State/Actual Value (None)","2542_111":"Actual Dose Rate/Actual Value (Mu/min)","2238_111":"Step Dose/Actual Value (Mu)","2162_101":"Dose/Raw value (1/64th Mu)","2200_111":"PRF Pauses/Actual Value (None)","2541_111":"Wedge Position/Actual Value (None)","2224_129":"Step Gantry/Scaled Actual (deg)","2224_220":"Step Gantry/Positional Error (deg)","2225_129":"Step Collimator/Scaled Actual (deg)","2225_220":"Step Collimator/Positional Error (deg)","2226_129":"Table Isocentric/Scaled Actual (deg)","2226_220":"Table Isocentric/Positional Error (deg)","2227_129":"Table Longitudinal/Scaled Actual (deg)","2227_220":"Table Longitudinal/Positional Error (deg)","2228_129":"Table Lateral/Scaled Actual (deg)","2228_220":"Table Lateral/Positional Error (deg)","2229_129":"Table Height/Scaled Actual (deg)","2229_220":"Table Height/Positional Error (deg)","2060_129":"X1 Diaphragm/Scaled Actual (mm)","2061_129":"X2 Diaphragm/Scaled Actual (mm)","2060_220":"X1 Diaphragm/Positional Error (mm)","2061_220":"X2 Diaphragm/Positional Error (mm)","2064_129":"Dlg Y2/Scaled Actual (mm)","2065_129":"Dlg Y1/Scaled Actual (mm)","2064_220":"Dlg Y2/Positional Error (mm)","2065_220":"Dlg Y1/Positional Error (mm)","2420_227":"Y2 Leaf 40/Actual Tolerance (mm)","2500_227":"Y1 Leaf 40/Actual Tolerance (mm)","2380_129":"Y2 Leaf 1/Scaled Actual (mm)","2381_129":"Y2 Leaf 2/Scaled Actual (mm)","2382_129":"Y2 Leaf 3/Scaled Actual (mm)","2383_129":"Y2 Leaf 4/Scaled Actual (mm)","2384_129":"Y2 Leaf 5/Scaled Actual (mm)","2385_129":"Y2 Leaf 6/Scaled Actual (mm)","2386_129":"Y2 Leaf 7/Scaled Actual (mm)","2387_129":"Y2 Leaf 8/Scaled Actual (mm)","2388_129":"Y2 Leaf 9/Scaled Actual (mm)","2389_129":"Y2 Leaf 10/Scaled Actual (mm)","2390_129":"Y2 Leaf 11/Scaled Actual (mm)","2391_129":"Y2 Leaf 12/Scaled Actual (mm)","2392_129":"Y2 Leaf 13/Scaled Actual (mm)","2393_129":"Y2 Leaf 14/Scaled Actual (mm)","2394_129":"Y2 Leaf 15/Scaled Actual (mm)","2395_129":"Y2 Leaf 16/Scaled Actual (mm)","2396_129":"Y2 Leaf 17/Scaled Actual (mm)","2397_129":"Y2 Leaf 18/Scaled Actual (mm)","2398_129":"Y2 Leaf 19/Scaled Actual (mm)","2399_129":"Y2 Leaf 20/Scaled Actual (mm)","2400_129":"Y2 Leaf 21/Scaled Actual (mm)","2401_129":"Y2 Leaf 22/Scaled Actual (mm)","2402_129":"Y2 Leaf 23/Scaled Actual (mm)","2403_129":"Y2 Leaf 24/Scaled Actual (mm)","2404_129":"Y2 Leaf 25/Scaled Actual (mm)","2405_129":"Y2 Leaf 26/Scaled Actual (mm)","2406_129":"Y2 Leaf 27/Scaled Actual (mm)","2407_129":"Y2 Leaf 28/Scaled Actual (mm)","2408_129":"Y2 Leaf 29/Scaled Actual (mm)","2409_129":"Y2 Leaf 30/Scaled Actual (mm)","2410_129":"Y2 Leaf 31/Scaled Actual (mm)","2411_129":"Y2 Leaf 32/Scaled Actual (mm)","2412_129":"Y2 Leaf 33/Scaled Actual (mm)","2413_129":"Y2 Leaf 34/Scaled Actual (mm)","2414_129":"Y2 Leaf 35/Scaled Actual (mm)","2415_129":"Y2 Leaf 36/Scaled Actual (mm)","2416_129":"Y2 Leaf 37/Scaled Actual (mm)","2417_129":"Y2 Leaf 38/Scaled Actual (mm)","2418_129":"Y2 Leaf 39/Scaled Actual (mm)","2419_129":"Y2 Leaf 40/Scaled Actual (mm)","2420_129":"Y2 Leaf 41/Scaled Actual (mm)","2421_129":"Y2 Leaf 42/Scaled Actual (mm)","2422_129":"Y2 Leaf 43/Scaled Actual (mm)","2423_129":"Y2 Leaf 44/Scaled Actual (mm)","2424_129":"Y2 Leaf 45/Scaled Actual (mm)","2425_129":"Y2 Leaf 46/Scaled Actual (mm)","2426_129":"Y2 Leaf 47/Scaled Actual (mm)","2427_129":"Y2 Leaf 48/Scaled Actual (mm)","2428_129":"Y2 Leaf 49/Scaled Actual (mm)","2429_129":"Y2 Leaf 50/Scaled Actual (mm)","2430_129":"Y2 Leaf 51/Scaled Actual (mm)","2431_129":"Y2 Leaf 52/Scaled Actual (mm)","2432_129":"Y2 Leaf 53/Scaled Actual (mm)","2433_129":"Y2 Leaf 54/Scaled Actual (mm)","2434_129":"Y2 Leaf 55/Scaled Actual (mm)","2435_129":"Y2 Leaf 56/Scaled Actual (mm)","2436_129":"Y2 Leaf 57/Scaled Actual (mm)","2437_129":"Y2 Leaf 58/Scaled Actual (mm)","2438_129":"Y2 Leaf 59/Scaled Actual (mm)","2439_129":"Y2 Leaf 60/Scaled Actual (mm)","2440_129":"Y2 Leaf 61/Scaled Actual (mm)","2441_129":"Y2 Leaf 62/Scaled Actual (mm)","2442_129":"Y2 Leaf 63/Scaled Actual (mm)","2443_129":"Y2 Leaf 64/Scaled Actual (mm)","2444_129":"Y2 Leaf 65/Scaled Actual (mm)","2445_129":"Y2 Leaf 66/Scaled Actual (mm)","2446_129":"Y2 Leaf 67/Scaled Actual (mm)","2447_129":"Y2 Leaf 68/Scaled Actual (mm)","2448_129":"Y2 Leaf 69/Scaled Actual (mm)","2449_129":"Y2 Leaf 70/Scaled Actual (mm)","2450_129":"Y2 Leaf 71/Scaled Actual (mm)","2451_129":"Y2 Leaf 72/Scaled Actual (mm)","2452_129":"Y2 Leaf 73/Scaled Actual (mm)","2453_129":"Y2 Leaf 74/Scaled Actual (mm)","2454_129":"Y2 Leaf 75/Scaled Actual (mm)","2455_129":"Y2 Leaf 76/Scaled Actual (mm)","2456_129":"Y2 Leaf 77/Scaled Actual (mm)","2457_129":"Y2 Leaf 78/Scaled Actual (mm)","2458_129":"Y2 Leaf 79/Scaled Actual (mm)","2459_129":"Y2 Leaf 80/Scaled Actual (mm)","2460_129":"Y1 Leaf 1/Scaled Actual (mm)","2461_129":"Y1 Leaf 2/Scaled Actual (mm)","2462_129":"Y1 Leaf 3/Scaled Actual (mm)","2463_129":"Y1 Leaf 4/Scaled Actual (mm)","2464_129":"Y1 Leaf 5/Scaled Actual (mm)","2465_129":"Y1 Leaf 6/Scaled Actual (mm)","2466_129":"Y1 Leaf 7/Scaled Actual (mm)","2467_129":"Y1 Leaf 8/Scaled Actual (mm)","2468_129":"Y1 Leaf 9/Scaled Actual (mm)","2469_129":"Y1 Leaf 10/Scaled Actual (mm)","2470_129":"Y1 Leaf 11/Scaled Actual (mm)","2471_129":"Y1 Leaf 12/Scaled Actual (mm)","2472_129":"Y1 Leaf 13/Scaled Actual (mm)","2473_129":"Y1 Leaf 14/Scaled Actual (mm)","2474_129":"Y1 Leaf 15/Scaled Actual (mm)","2475_129":"Y1 Leaf 16/Scaled Actual (mm)","2476_129":"Y1 Leaf 17/Scaled Actual (mm)","2477_129":"Y1 Leaf 18/Scaled Actual (mm)","2478_129":"Y1 Leaf 19/Scaled Actual (mm)","2479_129":"Y1 Leaf 20/Scaled Actual (mm)","2480_129":"Y1 Leaf 21/Scaled Actual (mm)","2481_129":"Y1 Leaf 22/Scaled Actual (mm)","2482_129":"Y1 Leaf 23/Scaled Actual (mm)","2483_129":"Y1 Leaf 24/Scaled Actual (mm)","2484_129":"Y1 Leaf 25/Scaled Actual (mm)","2485_129":"Y1 Leaf 26/Scaled Actual (mm)","2486_129":"Y1 Leaf 27/Scaled Actual (mm)","2487_129":"Y1 Leaf 28/Scaled Actual (mm)","2488_129":"Y1 Leaf 29/Scaled Actual (mm)","2489_129":"Y1 Leaf 30/Scaled Actual (mm)","2490_129":"Y1 Leaf 31/Scaled Actual (mm)","2491_129":"Y1 Leaf 32/Scaled Actual (mm)","2492_129":"Y1 Leaf 33/Scaled Actual (mm)","2493_129":"Y1 Leaf 34/Scaled Actual (mm)","2494_129":"Y1 Leaf 35/Scaled Actual (mm)","2495_129":"Y1 Leaf 36/Scaled Actual (mm)","2496_129":"Y1 Leaf 37/Scaled Actual (mm)","2497_129":"Y1 Leaf 38/Scaled Actual (mm)","2498_129":"Y1 Leaf 39/Scaled Actual (mm)","2499_129":"Y1 Leaf 40/Scaled Actual (mm)","2500_129":"Y1 Leaf 41/Scaled Actual (mm)","2501_129":"Y1 Leaf 42/Scaled Actual (mm)","2502_129":"Y1 Leaf 43/Scaled Actual (mm)","2503_129":"Y1 Leaf 44/Scaled Actual (mm)","2504_129":"Y1 Leaf 45/Scaled Actual (mm)","2505_129":"Y1 Leaf 46/Scaled Actual (mm)","2506_129":"Y1 Leaf 47/Scaled Actual (mm)","2507_129":"Y1 Leaf 48/Scaled Actual (mm)","2508_129":"Y1 Leaf 49/Scaled Actual (mm)","2509_129":"Y1 Leaf 50/Scaled Actual (mm)","2510_129":"Y1 Leaf 51/Scaled Actual (mm)","2511_129":"Y1 Leaf 52/Scaled Actual (mm)","2512_129":"Y1 Leaf 53/Scaled Actual (mm)","2513_129":"Y1 Leaf 54/Scaled Actual (mm)","2514_129":"Y1 Leaf 55/Scaled Actual (mm)","2515_129":"Y1 Leaf 56/Scaled Actual (mm)","2516_129":"Y1 Leaf 57/Scaled Actual (mm)","2517_129":"Y1 Leaf 58/Scaled Actual (mm)","2518_129":"Y1 Leaf 59/Scaled Actual (mm)","2519_129":"Y1 Leaf 60/Scaled Actual (mm)","2520_129":"Y1 Leaf 61/Scaled Actual (mm)","2521_129":"Y1 Leaf 62/Scaled Actual (mm)","2522_129":"Y1 Leaf 63/Scaled Actual (mm)","2523_129":"Y1 Leaf 64/Scaled Actual (mm)","2524_129":"Y1 Leaf 65/Scaled Actual (mm)","2525_129":"Y1 Leaf 66/Scaled Actual (mm)","2526_129":"Y1 Leaf 67/Scaled Actual (mm)","2527_129":"Y1 Leaf 68/Scaled Actual (mm)","2528_129":"Y1 Leaf 69/Scaled Actual (mm)","2529_129":"Y1 Leaf 70/Scaled Actual (mm)","2530_129":"Y1 Leaf 71/Scaled Actual (mm)","2531_129":"Y1 Leaf 72/Scaled Actual (mm)","2532_129":"Y1 Leaf 73/Scaled Actual (mm)","2533_129":"Y1 Leaf 74/Scaled Actual (mm)","2534_129":"Y1 Leaf 75/Scaled Actual (mm)","2535_129":"Y1 Leaf 76/Scaled Actual (mm)","2536_129":"Y1 Leaf 77/Scaled Actual (mm)","2537_129":"Y1 Leaf 78/Scaled Actual (mm)","2538_129":"Y1 Leaf 79/Scaled Actual (mm)","2539_129":"Y1 Leaf 80/Scaled Actual (mm)","2380_220":"Y2 Leaf 1/Positional Error (mm)","2381_220":"Y2 Leaf 2/Positional Error (mm)","2382_220":"Y2 Leaf 3/Positional Error (mm)","2383_220":"Y2 Leaf 4/Positional Error (mm)","2384_220":"Y2 Leaf 5/Positional Error (mm)","2385_220":"Y2 Leaf 6/Positional Error (mm)","2386_220":"Y2 Leaf 7/Positional Error (mm)","2387_220":"Y2 Leaf 8/Positional Error (mm)","2388_220":"Y2 Leaf 9/Positional Error (mm)","2389_220":"Y2 Leaf 10/Positional Error (mm)","2390_220":"Y2 Leaf 11/Positional Error (mm)","2391_220":"Y2 Leaf 12/Positional Error (mm)","2392_220":"Y2 Leaf 13/Positional Error (mm)","2393_220":"Y2 Leaf 14/Positional Error (mm)","2394_220":"Y2 Leaf 15/Positional Error (mm)","2395_220":"Y2 Leaf 16/Positional Error (mm)","2396_220":"Y2 Leaf 17/Positional Error (mm)","2397_220":"Y2 Leaf 18/Positional Error (mm)","2398_220":"Y2 Leaf 19/Positional Error (mm)","2399_220":"Y2 Leaf 20/Positional Error (mm)","2400_220":"Y2 Leaf 21/Positional Error (mm)","2401_220":"Y2 Leaf 22/Positional Error (mm)","2402_220":"Y2 Leaf 23/Positional Error (mm)","2403_220":"Y2 Leaf 24/Positional Error (mm)","2404_220":"Y2 Leaf 25/Positional Error (mm)","2405_220":"Y2 Leaf 26/Positional Error (mm)","2406_220":"Y2 Leaf 27/Positional Error (mm)","2407_220":"Y2 Leaf 28/Positional Error (mm)","2408_220":"Y2 Leaf 29/Positional Error (mm)","2409_220":"Y2 Leaf 30/Positional Error (mm)","2410_220":"Y2 Leaf 31/Positional Error (mm)","2411_220":"Y2 Leaf 32/Positional Error (mm)","2412_220":"Y2 Leaf 33/Positional Error (mm)","2413_220":"Y2 Leaf 34/Positional Error (mm)","2414_220":"Y2 Leaf 35/Positional Error (mm)","2415_220":"Y2 Leaf 36/Positional Error (mm)","2416_220":"Y2 Leaf 37/Positional Error (mm)","2417_220":"Y2 Leaf 38/Positional Error (mm)","2418_220":"Y2 Leaf 39/Positional Error (mm)","2419_220":"Y2 Leaf 40/Positional Error (mm)","2420_220":"Y2 Leaf 41/Positional Error (mm)","2421_220":"Y2 Leaf 42/Positional Error (mm)","2422_220":"Y2 Leaf 43/Positional Error (mm)","2423_220":"Y2 Leaf 44/Positional Error (mm)","2424_220":"Y2 Leaf 45/Positional Error (mm)","2425_220":"Y2 Leaf 46/Positional Error (mm)","2426_220":"Y2 Leaf 47/Positional Error (mm)","2427_220":"Y2 Leaf 48/Positional Error (mm)","2428_220":"Y2 Leaf 49/Positional Error (mm)","2429_220":"Y2 Leaf 50/Positional Error (mm)","2430_220":"Y2 Leaf 51/Positional Error (mm)","2431_220":"Y2 Leaf 52/Positional Error (mm)","2432_220":"Y2 Leaf 53/Positional Error (mm)","2433_220":"Y2 Leaf 54/Positional Error (mm)","2434_220":"Y2 Leaf 55/Positional Error (mm)","2435_220":"Y2 Leaf 56/Positional Error (mm)","2436_220":"Y2 Leaf 57/Positional Error (mm)","2437_220":"Y2 Leaf 58/Positional Error (mm)","2438_220":"Y2 Leaf 59/Positional Error (mm)","2439_220":"Y2 Leaf 60/Positional Error (mm)","2440_220":"Y2 Leaf 61/Positional Error (mm)","2441_220":"Y2 Leaf 62/Positional Error (mm)","2442_220":"Y2 Leaf 63/Positional Error (mm)","2443_220":"Y2 Leaf 64/Positional Error (mm)","2444_220":"Y2 Leaf 65/Positional Error (mm)","2445_220":"Y2 Leaf 66/Positional Error (mm)","2446_220":"Y2 Leaf 67/Positional Error (mm)","2447_220":"Y2 Leaf 68/Positional Error (mm)","2448_220":"Y2 Leaf 69/Positional Error (mm)","2449_220":"Y2 Leaf 70/Positional Error (mm)","2450_220":"Y2 Leaf 71/Positional Error (mm)","2451_220":"Y2 Leaf 72/Positional Error (mm)","2452_220":"Y2 Leaf 73/Positional Error (mm)","2453_220":"Y2 Leaf 74/Positional Error (mm)","2454_220":"Y2 Leaf 75/Positional Error (mm)","2455_220":"Y2 Leaf 76/Positional Error (mm)","2456_220":"Y2 Leaf 77/Positional Error (mm)","2457_220":"Y2 Leaf 78/Positional Error (mm)","2458_220":"Y2 Leaf 79/Positional Error (mm)","2459_220":"Y2 Leaf 80/Positional Error (mm)","2460_220":"Y1 Leaf 1/Positional Error (mm)","2461_220":"Y1 Leaf 2/Positional Error (mm)","2462_220":"Y1 Leaf 3/Positional Error (mm)","2463_220":"Y1 Leaf 4/Positional Error (mm)","2464_220":"Y1 Leaf 5/Positional Error (mm)","2465_220":"Y1 Leaf 6/Positional Error (mm)","2466_220":"Y1 Leaf 7/Positional Error (mm)","2467_220":"Y1 Leaf 8/Positional Error (mm)","2468_220":"Y1 Leaf 9/Positional Error (mm)","2469_220":"Y1 Leaf 10/Positional Error (mm)","2470_220":"Y1 Leaf 11/Positional Error (mm)","2471_220":"Y1 Leaf 12/Positional Error (mm)","2472_220":"Y1 Leaf 13/Positional Error (mm)","2473_220":"Y1 Leaf 14/Positional Error (mm)","2474_220":"Y1 Leaf 15/Positional Error (mm)","2475_220":"Y1 Leaf 16/Positional Error (mm)","2476_220":"Y1 Leaf 17/Positional Error (mm)","2477_220":"Y1 Leaf 18/Positional Error (mm)","2478_220":"Y1 Leaf 19/Positional Error (mm)","2479_220":"Y1 Leaf 20/Positional Error (mm)","2480_220":"Y1 Leaf 21/Positional Error (mm)","2481_220":"Y1 Leaf 22/Positional Error (mm)","2482_220":"Y1 Leaf 23/Positional Error (mm)","2483_220":"Y1 Leaf 24/Positional Error (mm)","2484_220":"Y1 Leaf 25/Positional Error (mm)","2485_220":"Y1 Leaf 26/Positional Error (mm)","2486_220":"Y1 Leaf 27/Positional Error (mm)","2487_220":"Y1 Leaf 28/Positional Error (mm)","2488_220":"Y1 Leaf 29/Positional Error (mm)","2489_220":"Y1 Leaf 30/Positional Error (mm)","2490_220":"Y1 Leaf 31/Positional Error (mm)","2491_220":"Y1 Leaf 32/Positional Error (mm)","2492_220":"Y1 Leaf 33/Positional Error (mm)","2493_220":"Y1 Leaf 34/Positional Error (mm)","2494_220":"Y1 Leaf 35/Positional Error (mm)","2495_220":"Y1 Leaf 36/Positional Error (mm)","2496_220":"Y1 Leaf 37/Positional Error (mm)","2497_220":"Y1 Leaf 38/Positional Error (mm)","2498_220":"Y1 Leaf 39/Positional Error (mm)","2499_220":"Y1 Leaf 40/Positional Error (mm)","2500_220":"Y1 Leaf 41/Positional Error (mm)","2501_220":"Y1 Leaf 42/Positional Error (mm)","2502_220":"Y1 Leaf 43/Positional Error (mm)","2503_220":"Y1 Leaf 44/Positional Error (mm)","2504_220":"Y1 Leaf 45/Positional Error (mm)","2505_220":"Y1 Leaf 46/Positional Error (mm)","2506_220":"Y1 Leaf 47/Positional Error (mm)","2507_220":"Y1 Leaf 48/Positional Error (mm)","2508_220":"Y1 Leaf 49/Positional Error (mm)","2509_220":"Y1 Leaf 50/Positional Error (mm)","2510_220":"Y1 Leaf 51/Positional Error (mm)","2511_220":"Y1 Leaf 52/Positional Error (mm)","2512_220":"Y1 Leaf 53/Positional Error (mm)","2513_220":"Y1 Leaf 54/Positional Error (mm)","2514_220":"Y1 Leaf 55/Positional Error (mm)","2515_220":"Y1 Leaf 56/Positional Error (mm)","2516_220":"Y1 Leaf 57/Positional Error (mm)","2517_220":"Y1 Leaf 58/Positional Error (mm)","2518_220":"Y1 Leaf 59/Positional Error (mm)","2519_220":"Y1 Leaf 60/Positional Error (mm)","2520_220":"Y1 Leaf 61/Positional Error (mm)","2521_220":"Y1 Leaf 62/Positional Error (mm)","2522_220":"Y1 Leaf 63/Positional Error (mm)","2523_220":"Y1 Leaf 64/Positional Error (mm)","2524_220":"Y1 Leaf 65/Positional Error (mm)","2525_220":"Y1 Leaf 66/Positional Error (mm)","2526_220":"Y1 Leaf 67/Positional Error (mm)","2527_220":"Y1 Leaf 68/Positional Error (mm)","2528_220":"Y1 Leaf 69/Positional Error (mm)","2529_220":"Y1 Leaf 70/Positional Error (mm)","2530_220":"Y1 Leaf 71/Positional Error (mm)","2531_220":"Y1 Leaf 72/Positional Error (mm)","2532_220":"Y1 Leaf 73/Positional Error (mm)","2533_220":"Y1 Leaf 74/Positional Error (mm)","2534_220":"Y1 Leaf 75/Positional Error (mm)","2535_220":"Y1 Leaf 76/Positional Error (mm)","2536_220":"Y1 Leaf 77/Positional Error (mm)","2537_220":"Y1 Leaf 78/Positional Error (mm)","2538_220":"Y1 Leaf 79/Positional Error (mm)","2539_220":"Y1 Leaf 80/Positional Error (mm)","2170_111":"Mlc Status/Actual Value (None)"}}</script>
+
+<style>
+:root{
+  --sol:#EBEFF2; --panneau:#F8FAFB; --creux:#E1E7EC; --survol:#DEE6EC;
+  --encre:#131A21; --sourdine:#5B6B78; --tenu:#8496A3;
+  --filet:#C4CFD8; --filet-fin:#DCE3E9;
+  --vif:#0A6670; --vif-clair:#0E838F; --vif-voile:rgba(10,102,112,.10);
+  --chaud:#A25E06; --alerte:#9E2F2A;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --serif:ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --sol:#0D1217; --panneau:#151C23; --creux:#1B242C; --survol:#222D36;
+    --encre:#DCE4EB; --sourdine:#93A2B0; --tenu:#6B7C8A;
+    --filet:#2B3742; --filet-fin:#1F2932;
+    --vif:#43BAC6; --vif-clair:#5FD0DB; --vif-voile:rgba(67,186,198,.12);
+    --chaud:#E0A44A; --alerte:#E0736D;
+  }
+}
+:root[data-theme="dark"]{
+  --sol:#0D1217; --panneau:#151C23; --creux:#1B242C; --survol:#222D36;
+  --encre:#DCE4EB; --sourdine:#93A2B0; --tenu:#6B7C8A;
+  --filet:#2B3742; --filet-fin:#1F2932;
+  --vif:#43BAC6; --vif-clair:#5FD0DB; --vif-voile:rgba(67,186,198,.12);
+  --chaud:#E0A44A; --alerte:#E0736D;
+}
+:root[data-theme="light"]{
+  --sol:#EBEFF2; --panneau:#F8FAFB; --creux:#E1E7EC; --survol:#DEE6EC;
+  --encre:#131A21; --sourdine:#5B6B78; --tenu:#8496A3;
+  --filet:#C4CFD8; --filet-fin:#DCE3E9;
+  --vif:#0A6670; --vif-clair:#0E838F; --vif-voile:rgba(10,102,112,.10);
+  --chaud:#A25E06; --alerte:#9E2F2A;
+}
+
+*{box-sizing:border-box}
+body{margin:0; background:var(--sol); color:var(--encre); font-family:var(--sans);
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased}
+.enveloppe{max-width:1400px; margin:0 auto; padding:0 20px 60px}
+
+/* ---- titre ---- */
+.chapeau{padding:36px 0 22px}
+.oeil{font-family:var(--mono); font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--sourdine); margin:0 0 12px}
+h1{font-size:clamp(24px,3.6vw,34px); line-height:1.1; margin:0 0 10px; font-weight:670;
+  letter-spacing:-.02em}
+.sous{font-family:var(--serif); font-size:16.5px; color:var(--sourdine); margin:0; max-width:70ch}
+.sous b{color:var(--encre); font-weight:600}
+
+/* ---- dépôt de fichier ---- */
+.depot{
+  border:2px dashed var(--filet); background:var(--panneau);
+  padding:44px 28px; text-align:center; margin:26px 0 0; cursor:pointer;
+  transition:border-color .15s, background .15s;
+}
+.depot:hover,.depot.actif{border-color:var(--vif); background:var(--vif-voile)}
+.depot:focus-visible{outline:2px solid var(--vif-clair); outline-offset:3px}
+.depot .gros{font-size:17px; font-weight:600; margin:0 0 6px}
+.depot .pt{font-size:13.5px; color:var(--sourdine); margin:0; font-family:var(--mono)}
+.depot.compact{padding:12px 18px; text-align:left; display:flex; justify-content:space-between;
+  align-items:center; gap:16px; flex-wrap:wrap; border-style:solid; margin-bottom:18px}
+.depot.compact .gros{font-size:14px; margin:0; font-family:var(--mono); font-weight:600;
+  word-break:break-all}
+.depot.compact .pt{font-size:12px}
+
+/* ---- fiche d'en-tête ---- */
+.entete{display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:1px;
+  background:var(--filet-fin); border:1px solid var(--filet-fin); margin:0 0 18px}
+.champ{background:var(--panneau); padding:10px 13px}
+.champ .et{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--tenu); display:block; margin-bottom:3px}
+.champ .vl{font-family:var(--mono); font-size:15px; font-weight:600;
+  font-variant-numeric:tabular-nums; word-break:normal; overflow-wrap:anywhere}
+.champ .vl.acc{color:var(--vif)}
+
+/* ---- barre d'outils ---- */
+.outils{background:var(--panneau); border:1px solid var(--filet-fin); padding:12px 14px;
+  margin:0 0 14px; display:flex; flex-direction:column; gap:11px}
+.rangee{display:flex; gap:9px; align-items:center; flex-wrap:wrap}
+.rangee .lbl{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--tenu); margin-right:2px}
+button.jeu{
+  font-family:var(--mono); font-size:12px; padding:5px 11px; cursor:pointer;
+  background:var(--creux); color:var(--encre); border:1px solid transparent;
+}
+button.jeu:hover{background:var(--survol)}
+button.jeu[aria-pressed="true"]{background:var(--vif); color:var(--panneau); font-weight:600}
+button.jeu:focus-visible{outline:2px solid var(--vif-clair); outline-offset:2px}
+input[type=search],select{
+  font-family:var(--mono); font-size:12.5px; padding:5px 9px; background:var(--sol);
+  color:var(--encre); border:1px solid var(--filet); min-width:0;
+}
+input[type=search]{flex:1; min-width:150px}
+input[type=search]:focus-visible,select:focus-visible{outline:2px solid var(--vif-clair); outline-offset:1px}
+.compteur{font-family:var(--mono); font-size:12px; color:var(--sourdine);
+  font-variant-numeric:tabular-nums; margin-left:auto}
+
+/* ---- tableau ---- */
+.grille{border:1px solid var(--filet-fin); background:var(--panneau); position:relative}
+.defile{overflow:auto; max-height:min(66vh,620px); position:relative}
+table{border-collapse:separate; border-spacing:0; font-family:var(--mono); font-size:12px;
+  font-variant-numeric:tabular-nums; width:max-content; min-width:100%}
+thead th{
+  position:sticky; top:0; z-index:3; background:var(--creux); text-align:right;
+  padding:7px 10px; font-size:10px; letter-spacing:.05em; font-weight:600;
+  color:var(--sourdine); white-space:nowrap; border-bottom:1px solid var(--filet);
+  text-transform:uppercase;
+}
+thead th:first-child{left:0; z-index:4; text-align:left}
+tbody td{padding:0 10px; height:25px; white-space:nowrap; text-align:right;
+  border-bottom:1px solid var(--filet-fin)}
+tbody td:first-child{position:sticky; left:0; background:var(--panneau); z-index:2;
+  text-align:left; color:var(--tenu); border-right:1px solid var(--filet-fin)}
+tbody tr:hover td{background:var(--survol)}
+tbody tr:hover td:first-child{background:var(--survol)}
+td.txt{text-align:left; color:var(--vif)}
+td.nul{color:var(--tenu)}
+td.neg{color:var(--chaud)}
+.vide{padding:40px 20px; text-align:center; color:var(--sourdine); font-family:var(--mono);
+  font-size:13px}
+.erreur{background:rgba(158,47,42,.09); border:1px solid var(--alerte); padding:16px 18px;
+  margin:18px 0 0}
+.erreur h2{margin:0 0 6px; font-size:15px; color:var(--alerte); font-weight:640}
+.erreur p{margin:0; font-size:13.5px; color:var(--sourdine); font-family:var(--mono);
+  word-break:break-word}
+
+.note{font-size:13px; color:var(--sourdine); margin:16px 0 0; max-width:78ch; line-height:1.6}
+.note code{font-family:var(--mono); font-size:12px; background:var(--creux); padding:1px 5px}
+.pied{margin-top:34px; padding-top:18px; border-top:1px solid var(--filet);
+  font-size:12.5px; color:var(--tenu); max-width:80ch; line-height:1.6}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+
+<div class="enveloppe">
+
+<header class="chapeau">
+  <p class="oeil">Elekta · Agility · fichier .trf</p>
+  <h1>Lecteur de log machine</h1>
+  <p class="sous">Décode un fichier TRF et affiche ses 350 et quelques colonnes.
+  <b>Tout se passe dans votre navigateur</b> — le fichier n'est envoyé nulle part, aucune
+  requête réseau n'est émise. Utilisable sur des données réelles.</p>
+</header>
+
+<div class="depot" id="depot" tabindex="0" role="button"
+     aria-label="Choisir un fichier TRF">
+  <p class="gros">Déposez un fichier <code>.trf</code>, ou cliquez pour le choisir</p>
+  <p class="pt">rien n'est transmis · le décodage est local</p>
+</div>
+<input type="file" id="fichier" accept=".trf" hidden>
+
+<div id="zone-erreur"></div>
+<div id="resultat" hidden>
+
+  <div class="entete" id="entete"></div>
+
+  <div class="outils">
+    <div class="rangee">
+      <span class="lbl">Colonnes</span>
+      <button class="jeu" data-jeu="essentiel" aria-pressed="true">Essentiel</button>
+      <button class="jeu" data-jeu="y1" aria-pressed="false">Lames Y1</button>
+      <button class="jeu" data-jeu="y2" aria-pressed="false">Lames Y2</button>
+      <button class="jeu" data-jeu="err" aria-pressed="false">Erreurs</button>
+      <button class="jeu" data-jeu="colli" aria-pressed="false">Diaphragmes</button>
+      <button class="jeu" data-jeu="table" aria-pressed="false">Table</button>
+      <button class="jeu" data-jeu="tout" aria-pressed="false">Tout</button>
+    </div>
+    <div class="rangee">
+      <span class="lbl">Filtrer</span>
+      <input type="search" id="recherche" placeholder="nom de colonne — ex. « Leaf 40 », « Gantry »">
+      <select id="etat"><option value="">tous les états machine</option></select>
+      <button class="jeu" id="csv">Exporter en CSV</button>
+    </div>
+    <div class="rangee">
+      <span class="compteur" id="compteur"></span>
+    </div>
+  </div>
+
+  <div class="grille">
+    <div class="defile" id="defile">
+      <table>
+        <thead><tr id="entetes"></tr></thead>
+        <tbody id="corps"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="note" id="note"></p>
+</div>
+
+<p class="pied">
+Décodage réimplémenté d'après pymedphys, dont le format TRF a été obtenu par rétro-ingénierie —
+Elekta n'en publie pas la spécification. Versions d'encodage 1 à 4 gérées. Les positions sont
+au dixième de millimètre, le pas d'échantillonnage est de 40 ms. Le banc Y2 est renvoyé avec le
+signe opposé et les codes d'état sont traduits, comme le fait pymedphys.
+</p>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+const CFG = JSON.parse(document.getElementById("cfg").textContent);
+const PAS = CFG.time_increment, HL = 25;
+
+/* ================= décodage ================= */
+function lireChaine(vue, pos){
+  const n = vue.getUint8(pos);
+  let s = "";
+  for(let i=0;i<n;i++) s += String.fromCharCode(vue.getUint8(pos+1+i));
+  return {texte:s, suite:pos+1+n};
+}
+
+function decoder(tampon){
+  const vue = new DataView(tampon);
+  if(tampon.byteLength < 64) throw new Error("Fichier trop court pour être un TRF.");
+
+  let p = 0;
+  const date = lireChaine(vue,p);      p = date.suite;
+  const fuseau = lireChaine(vue,p);    p = fuseau.suite;
+  const champ = lireChaine(vue,p);     p = champ.suite;
+  const machine = lireChaine(vue,p);   p = machine.suite;
+
+  if(!/^\d\d[/-]\d\d[/-]\d\d \d\d:\d\d:\d\d Z$/.test(date.texte))
+    throw new Error("En-tête non reconnu : la date attendue en tête de fichier est absente. "
+      + "Lu : « " + date.texte.slice(0,40) + " »");
+
+  const mu = vue.getFloat64(p, true);
+  const version = vue.getInt32(p+8, true);
+  const nbCol = vue.getInt32(p+12, true);
+  if(!CFG.version_row[version])
+    throw new Error("Version d'encodage " + version + " inconnue (1 à 4 gérées).");
+  if(nbCol <= 0 || nbCol > 5000)
+    throw new Error("Nombre de colonnes aberrant : " + nbCol);
+
+  const schema = [];
+  for(let i=0;i<nbCol*2;i++) schema.push(vue.getInt16(p+16+i*2, true));
+  const finEntete = p+16+nbCol*4;
+
+  const vr = CFG.version_row[String(version)];
+  const longueurSchema = schema.length;                 // = 2 × nbCol
+  const ligne = vr.lg_scale*longueurSchema + vr.offset;
+  const octets = tampon.byteLength - finEntete;
+  const nbLignes = Math.floor(octets/ligne);
+  if(nbLignes < 1) throw new Error("Aucune ligne de données exploitable.");
+
+  // noms de colonnes, dans l'ordre du fichier
+  const noms = [];
+  for(let i=0;i<longueurSchema;i+=2){
+    const cle = schema[i] + "_" + schema[i+1];
+    noms.push(CFG.item_part_names[cle] || cle);
+  }
+
+  // lecture brute
+  const colonnes = noms.map(()=> new Float64Array(nbLignes));
+  const horo = version > 1 ? [new Float64Array(nbLignes),new Float64Array(nbLignes),
+                              new Float64Array(nbLignes),new Float64Array(nbLignes)] : null;
+  // Le préfixe de 8 octets des versions ≥ 2 est un compteur en millisecondes.
+  // pymedphys le conserve en quatre entiers bruts (« unknown1..4 ») sans
+  // l'interpréter, et reconstruit le temps par « numéro de ligne × 40 ms ».
+  // On le décode ici pour pouvoir confronter les deux.
+  const msMachine = version > 1 ? new Float64Array(nbLignes) : null;
+  const large = vr.dtype === "int32";
+  for(let r=0;r<nbLignes;r++){
+    const base = finEntete + r*ligne;
+    if(horo){
+      for(let k=0;k<4;k++) horo[k][r] = vue.getUint16(base+k*2, true);
+      msMachine[r] = vue.getUint32(base, true) + vue.getUint32(base+4, true)*4294967296;
+    }
+    const d = base + vr.offset;
+    for(let c=0;c<nbCol;c++){
+      colonnes[c][r] = large ? vue.getInt32(d+c*4, true) : vue.getInt16(d+c*2, true);
+    }
+  }
+
+  /* --- conversions, dans l'ordre de pymedphys --- */
+  const idx = n => noms.indexOf(n);
+  const textuelles = {};
+
+  const iEtat = idx("Linac State/Actual Value (None)");
+  if(iEtat>=0) textuelles[iEtat] = Array.from(colonnes[iEtat],
+      v => CFG.linac_state_codes[String(v)] ?? String(v));
+  const iCoin = idx("Wedge Position/Actual Value (None)");
+  if(iCoin>=0) textuelles[iCoin] = Array.from(colonnes[iCoin],
+      v => CFG.wedge_codes[String(v)] ?? String(v));
+
+  const iDose = idx("Step Dose/Actual Value (Mu)");
+  if(iDose>=0){ const a=colonnes[iDose]; for(let i=0;i<a.length;i++) a[i]/=10; }
+
+  const iBrut = idx("Dose/Raw value (1/64th Mu)");
+  if(iBrut>=0){ const a=colonnes[iBrut]; for(let i=0;i<a.length;i++) if(a[i]<0) a[i]+=65536; }
+
+  const debut = idx("Step Gantry/Scaled Actual (deg)");
+  let fin = noms.length;
+  if(version === 4){ const m = idx("Mlc Status/Actual Value (None)"); if(m>=0) fin = m; }
+  if(debut>=0){
+    for(let c=debut;c<fin;c++){
+      if(textuelles[c]) continue;
+      const a=colonnes[c]; for(let i=0;i<a.length;i++) a[i]/=10;
+    }
+    // pymedphys restaure la table isocentrique en valeur entière brute
+    const iTab = idx("Table Isocentric/Scaled Actual (deg)");
+    if(iTab>=debut && iTab<fin){
+      const a=colonnes[iTab]; for(let i=0;i<a.length;i++) a[i]=Math.trunc(a[i]*10);
+    }
+  }
+  // le banc Y2 est renvoyé
+  noms.forEach((n,c)=>{
+    if(n.includes("Y2 Leaf") && n.includes("Scaled Actual")){
+      const a=colonnes[c]; for(let i=0;i<a.length;i++) a[i]=-a[i];
+    }
+  });
+
+  // les 4 champs d'horodatage passent en tête, comme dans pymedphys
+  const nomsFinal=[], colFinal=[], txtFinal={};
+  if(horo){
+    ["unknown1","unknown2","unknown3","unknown4"].forEach((n,k)=>{
+      nomsFinal.push(n); colFinal.push(horo[k]);
+    });
+  }
+  noms.forEach((n,c)=>{
+    if(textuelles[c]) txtFinal[colFinal.length] = textuelles[c];
+    nomsFinal.push(n); colFinal.push(colonnes[c]);
+  });
+
+  const [label, nom] = champ.texte.includes("/")
+      ? [champ.texte.slice(0,champ.texte.indexOf("/")), champ.texte.slice(champ.texte.indexOf("/")+1)]
+      : ["", champ.texte];
+
+  // horodatage machine : écart au pas nominal de 40 ms
+  let derive = null;
+  if(msMachine && nbLignes > 1){
+    const t0 = msMachine[0];
+    let max = 0, irreguliers = 0, trous = 0;
+    for(let r=1;r<nbLignes;r++){
+      const pas = msMachine[r]-msMachine[r-1];
+      if(pas !== 40) irreguliers++;
+      if(pas > 41) trous++;
+      const e = Math.abs((msMachine[r]-t0) - r*40);
+      if(e > max) max = e;
+    }
+    derive = {max, irreguliers, trous, total:nbLignes-1};
+  }
+
+  return {
+    entete:{date:date.texte, fuseau:fuseau.texte, champLabel:label, champNom:nom,
+            machine:machine.texte, mu, version, nbCol},
+    noms:nomsFinal, colonnes:colFinal, textuelles:txtFinal, msMachine, derive,
+    nbLignes, ligne, finEntete, reste: octets - nbLignes*ligne
+  };
+}
+
+/* ================= état ================= */
+let T = null, visibles = [], lignesVues = [], jeu = "essentiel";
+
+const JEUX = {
+  essentiel: n => ["Control point/Actual Value (None)","Linac State/Actual Value (None)",
+      "Step Dose/Actual Value (Mu)","Actual Dose Rate/Actual Value (Mu/min)",
+      "Step Gantry/Scaled Actual (deg)","Step Collimator/Scaled Actual (deg)",
+      "X1 Diaphragm/Scaled Actual (mm)","X2 Diaphragm/Scaled Actual (mm)",
+      "Dlg Y1/Scaled Actual (mm)","Dlg Y2/Scaled Actual (mm)",
+      "Wedge Position/Actual Value (None)"].includes(n),
+  y1:    n => n.startsWith("Y1 Leaf") && n.includes("Scaled Actual"),
+  y2:    n => n.startsWith("Y2 Leaf") && n.includes("Scaled Actual"),
+  err:   n => n.includes("Positional Error"),
+  colli: n => n.includes("Diaphragm") || n.startsWith("Dlg"),
+  table: n => n.startsWith("Table"),
+  tout:  () => true,
+};
+
+function recalcColonnes(){
+  const q = document.getElementById("recherche").value.trim().toLowerCase();
+  const test = JEUX[jeu];
+  visibles = [];
+  T.noms.forEach((n,i)=>{
+    if(!test(n)) return;
+    if(q && !n.toLowerCase().includes(q)) return;
+    visibles.push(i);
+  });
+}
+
+function recalcLignes(){
+  const e = document.getElementById("etat").value;
+  const iEtat = T.noms.indexOf("Linac State/Actual Value (None)");
+  lignesVues = [];
+  if(!e || iEtat<0 || !T.textuelles[iEtat]){
+    for(let r=0;r<T.nbLignes;r++) lignesVues.push(r);
+  }else{
+    const col = T.textuelles[iEtat];
+    for(let r=0;r<T.nbLignes;r++) if(col[r]===e) lignesVues.push(r);
+  }
+}
+
+function formater(i, r){
+  if(T.textuelles[i]) return {t:T.textuelles[i][r], cls:"txt"};
+  const v = T.colonnes[i][r];
+  if(Number.isInteger(v)) return {t:String(v), cls: v===0?"nul":(v<0?"neg":"")};
+  return {t:v.toFixed(1), cls: v===0?"nul":(v<0?"neg":"")};
+}
+
+/* ================= rendu ================= */
+function dessinerEntetes(){
+  const tr = document.getElementById("entetes");
+  tr.textContent = "";
+  const th0 = document.createElement("th");
+  th0.textContent = "t (s)";
+  th0.title = "Axe reconstruit : numéro de ligne × 40 ms. C'est ce que fournit pymedphys.";
+  tr.appendChild(th0);
+  if(T.msMachine){
+    const th1 = document.createElement("th");
+    th1.textContent = "t machine";
+    th1.title = "Horodatage réel écrit par la machine, en millisecondes. "
+              + "pymedphys conserve ces octets sans les interpréter.";
+    tr.appendChild(th1);
+    const th2 = document.createElement("th");
+    th2.textContent = "écart";
+    th2.title = "Écart entre l'axe reconstruit et l'horodatage réel, en millisecondes.";
+    tr.appendChild(th2);
+  }
+  visibles.forEach(i=>{
+    const th = document.createElement("th");
+    const n = T.noms[i];
+    th.textContent = n.replace("/Scaled Actual","").replace("/Actual Value","")
+                      .replace("/Positional Error","  err").replace(/ \((mm|deg|Mu|Mu\/min|None)\)/,"");
+    th.title = n;
+    tr.appendChild(th);
+  });
+}
+
+function dessinerCorps(){
+  const zone = document.getElementById("defile");
+  const corps = document.getElementById("corps");
+  const total = lignesVues.length;
+  const haut = Math.max(0, Math.floor(zone.scrollTop/HL) - 6);
+  const nb = Math.ceil(zone.clientHeight/HL) + 14;
+  const bas = Math.min(total, haut+nb);
+
+  corps.textContent = "";
+  if(total === 0){
+    const tr=document.createElement("tr"), td=document.createElement("td");
+    td.colSpan = visibles.length+(T.msMachine?3:1); td.className="vide";
+    td.textContent = "Aucune ligne ne correspond au filtre.";
+    tr.appendChild(td); corps.appendChild(tr); return;
+  }
+  const nbFixes = T.msMachine ? 3 : 1;
+  const cale = (n)=>{
+    const tr=document.createElement("tr"); tr.style.height=(n*HL)+"px";
+    const td=document.createElement("td"); td.colSpan=visibles.length+nbFixes;
+    td.style.padding="0"; td.style.borderBottom="none"; tr.appendChild(td); return tr;
+  };
+  if(haut>0) corps.appendChild(cale(haut));
+  for(let k=haut;k<bas;k++){
+    const r = lignesVues[k];
+    const tr = document.createElement("tr");
+    const td0 = document.createElement("td");
+    td0.textContent = (r*PAS).toFixed(2);
+    tr.appendChild(td0);
+    if(T.msMachine){
+      const reel = T.msMachine[r]-T.msMachine[0];
+      const td1 = document.createElement("td");
+      td1.textContent = (reel/1000).toFixed(3);
+      tr.appendChild(td1);
+      const ec = reel - r*40;
+      const td2 = document.createElement("td");
+      td2.textContent = (ec>0?"+":"") + ec;
+      if(ec===0) td2.className = "nul"; else td2.className = "neg";
+      tr.appendChild(td2);
+    }
+    visibles.forEach(i=>{
+      const td = document.createElement("td");
+      const f = formater(i,r);
+      td.textContent = f.t; if(f.cls) td.className = f.cls;
+      tr.appendChild(td);
+    });
+    corps.appendChild(tr);
+  }
+  if(bas<total) corps.appendChild(cale(total-bas));
+}
+
+function majCompteur(){
+  const c = document.getElementById("compteur");
+  c.textContent = `${lignesVues.length.toLocaleString("fr-FR")} lignes · `
+                + `${visibles.length} colonnes affichées sur ${T.noms.length}`;
+}
+
+function rafraichir(){
+  recalcColonnes(); recalcLignes();
+  dessinerEntetes(); dessinerCorps(); majCompteur();
+}
+
+function afficherEntete(){
+  const e = T.entete, z = document.getElementById("entete");
+  const duree = (T.nbLignes*PAS);
+  const champs = [
+    ["Machine", e.machine, true],
+    ["Date (UTC)", e.date.replace(" Z",""), false],
+    ["Fuseau", e.fuseau, false],
+    ["Champ", (e.champLabel? e.champLabel+" / ":"") + e.champNom, false],
+    ["Encodage", "v"+e.version, true],
+    ["MU totales", (e.mu/10).toFixed(1), true],
+    ["Échantillons", T.nbLignes.toLocaleString("fr-FR"), false],
+    ["Durée", duree.toFixed(1)+" s", false],
+    ["Colonnes", String(T.noms.length), false],
+    ["Octets / ligne", String(T.ligne), false],
+  ];
+  z.textContent = "";
+  champs.forEach(([et,vl,acc])=>{
+    const d=document.createElement("div"); d.className="champ";
+    const a=document.createElement("span"); a.className="et"; a.textContent=et;
+    const b=document.createElement("span"); b.className="vl"+(acc?" acc":""); b.textContent=vl;
+    d.appendChild(a); d.appendChild(b); z.appendChild(d);
+  });
+
+  const sel = document.getElementById("etat");
+  sel.textContent="";
+  const o0=document.createElement("option"); o0.value=""; o0.textContent="tous les états machine";
+  sel.appendChild(o0);
+  const iEtat = T.noms.indexOf("Linac State/Actual Value (None)");
+  if(iEtat>=0 && T.textuelles[iEtat]){
+    const comptes = new Map();
+    T.textuelles[iEtat].forEach(v=>comptes.set(v,(comptes.get(v)||0)+1));
+    [...comptes.entries()].sort((a,b)=>b[1]-a[1]).forEach(([v,n])=>{
+      const o=document.createElement("option"); o.value=v;
+      o.textContent=`${v} — ${n.toLocaleString("fr-FR")} lignes`;
+      sel.appendChild(o);
+    });
+  }
+
+  const note = document.getElementById("note");
+  let sup = "";
+  if(T.derive){
+    const pc = Math.round(100*T.derive.irreguliers/T.derive.total);
+    sup = ` Horodatage machine décodé : ${T.derive.irreguliers} intervalles sur `
+        + `${T.derive.total} (${pc} %) ne font pas exactement 40 ms, et l'axe reconstruit `
+        + `s'écarte du réel de ${T.derive.max} ms au maximum. `
+        + (T.derive.trous
+            ? `⚠ ${T.derive.trous} interruption(s) d'échantillonnage détectée(s) — `
+              + `un axe régulier les masquerait.`
+            : `Aucune interruption d'échantillonnage.`);
+  }
+  note.textContent = (T.reste
+    ? `Attention : ${T.reste} octets en fin de fichier n'ont pas pu être découpés en lignes `
+      + `complètes de ${T.ligne} octets. Le fichier est peut-être tronqué.`
+    : `Le fichier se découpe exactement en ${T.nbLignes.toLocaleString("fr-FR")} lignes de `
+      + `${T.ligne} octets, sans reste — c'est bon signe pour l'intégrité du décodage.`) + sup;
+}
+
+/* ================= CSV ================= */
+function exporterCsv(){
+  const sep = ";";
+  const fixes = T.msMachine ? ["t (s)","t machine (s)","ecart (ms)"] : ["t (s)"];
+  const lignes = [fixes.join(sep) + sep + visibles.map(i=>T.noms[i]).join(sep)];
+  lignesVues.forEach(r=>{
+    const cells = [ (r*PAS).toFixed(2).replace(".",",") ];
+    if(T.msMachine){
+      const reel = T.msMachine[r]-T.msMachine[0];
+      cells.push((reel/1000).toFixed(3).replace(".",","));
+      cells.push(String(reel - r*40));
+    }
+    visibles.forEach(i=>{
+      if(T.textuelles[i]) cells.push(T.textuelles[i][r]);
+      else{
+        const v=T.colonnes[i][r];
+        cells.push((Number.isInteger(v)?String(v):v.toFixed(1)).replace(".",","));
+      }
+    });
+    lignes.push(cells.join(sep));
+  });
+  const blob = new Blob(["\uFEFF"+lignes.join("\r\n")], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (nomFichier||"trf").replace(/\.trf$/i,"") + ".csv";
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ================= entrées ================= */
+let nomFichier = "";
+function erreur(msg){
+  document.getElementById("zone-erreur").innerHTML = "";
+  const d=document.createElement("div"); d.className="erreur";
+  const h=document.createElement("h2"); h.textContent="Ce fichier n'a pas pu être décodé";
+  const p=document.createElement("p"); p.textContent=msg;
+  d.appendChild(h); d.appendChild(p);
+  document.getElementById("zone-erreur").appendChild(d);
+  document.getElementById("resultat").hidden = true;
+}
+
+function charger(f){
+  nomFichier = f.name;
+  const lecteur = new FileReader();
+  lecteur.onload = () => {
+    try{
+      T = decoder(lecteur.result);
+      document.getElementById("zone-erreur").textContent = "";
+      document.getElementById("resultat").hidden = false;
+      const dep = document.getElementById("depot");
+      dep.classList.add("compact");
+      dep.innerHTML = "";
+      const g=document.createElement("p"); g.className="gros"; g.textContent=f.name;
+      const s=document.createElement("p"); s.className="pt";
+      s.textContent = (f.size/1e6).toFixed(2)+" Mo · cliquez pour changer de fichier";
+      dep.appendChild(g); dep.appendChild(s);
+      afficherEntete();
+      document.getElementById("defile").scrollTop = 0;
+      rafraichir();
+    }catch(ex){ erreur(ex.message || String(ex)); }
+  };
+  lecteur.onerror = () => erreur("Lecture du fichier impossible.");
+  lecteur.readAsArrayBuffer(f);
+}
+
+const depot = document.getElementById("depot"), input = document.getElementById("fichier");
+depot.addEventListener("click", ()=>input.click());
+depot.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); input.click(); }});
+input.addEventListener("change", e=>{ if(e.target.files[0]) charger(e.target.files[0]); });
+["dragenter","dragover"].forEach(t=>depot.addEventListener(t, e=>{
+  e.preventDefault(); depot.classList.add("actif"); }));
+["dragleave","drop"].forEach(t=>depot.addEventListener(t, e=>{
+  e.preventDefault(); depot.classList.remove("actif"); }));
+depot.addEventListener("drop", e=>{ if(e.dataTransfer.files[0]) charger(e.dataTransfer.files[0]); });
+
+document.querySelectorAll("button.jeu[data-jeu]").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    jeu = b.dataset.jeu;
+    document.querySelectorAll("button.jeu[data-jeu]").forEach(o=>
+      o.setAttribute("aria-pressed", String(o===b)));
+    document.getElementById("defile").scrollLeft = 0;
+    rafraichir();
+  });
+});
+document.getElementById("recherche").addEventListener("input", rafraichir);
+document.getElementById("etat").addEventListener("change", ()=>{
+  document.getElementById("defile").scrollTop = 0; rafraichir(); });
+document.getElementById("csv").addEventListener("click", exporterCsv);
+document.getElementById("defile").addEventListener("scroll", ()=>{ if(T) dessinerCorps(); });
+window.addEventListener("resize", ()=>{ if(T) dessinerCorps(); });
+})();
+</script>

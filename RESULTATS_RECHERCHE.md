@@ -528,6 +528,46 @@ connue à 0,1 mm ; une lame rapide à environ 1 mm.
 peut donc attacher une **incertitude à chaque valeur** plutôt que de les traiter
 toutes comme équivalentes.
 
+### L'horodatage machine améliore l'axe — sur la queue, pas sur la médiane
+
+**Certitude : 95 %** — mesuré sur les trois séances.
+
+L'axe des MU est un escalier : 27,6 % des échantillons n'incrémentent pas le
+compteur. Le temps, lui, avance toujours. On peut donc **dégraduer l'escalier**
+en interpolant les MU entre les marches, sur l'horodatage réel du préfixe de
+ligne (§ ci-dessous). Cela fait tomber le nombre de paliers de **749 à 204** —
+les 204 restants étant les vraies plages sans dose, qu'il faut laisser plates.
+
+Effet sur le désaccord entre les deux méthodes indépendantes :
+
+| Axe des MU | Médiane | p95 | ≤ 0,1 mm |
+|---|---|---|---|
+| compteur brut | 0,076 mm | 1,02 mm | 60 % |
+| **dégradué par l'horodatage** | **0,064 mm** | **0,93 mm** | 61 % |
+| intégration du débit de dose | 0,535 mm | 6,04 mm | 25 % |
+
+Et sur l'écart au plan, la mesure qui compte :
+
+| Séance | Axe brut | Axe dégradué |
+|---|---|---|
+| complète n° 1 | 0,175 / **1,03** | 0,173 / **0,88** |
+| complète n° 2 | 0,193 / **1,16** | 0,192 / **0,95** |
+| interrompue, recollée | 0,200 / **1,44** | 0,195 / **1,27** |
+
+*(médiane / p95, en mm, lames exposées)*
+
+**La médiane ne bouge pas ; le p95 gagne 12 à 18 %.** C'est cohérent avec le
+mécanisme : la médiane est portée par les lames lentes, que la quantification des
+MU n'affecte pas ; la queue est portée par les lames rapides, pour lesquelles
+0,1 MU vaut plus d'un millimètre. Le gain est donc exactement là où il manquait.
+
+⚠️ **L'intégration du débit de dose est une fausse bonne idée** : la colonne
+`Actual Dose Rate` est trop grossière, et l'axe reconstruit ainsi est **sept fois
+pire** que le compteur brut.
+
+Amélioration non implémentée dans les scripts du dépôt — elle demande de lire le
+préfixe de ligne en octets bruts, que pymedphys n'expose pas.
+
 ### Deux réserves supplémentaires
 
 - **27,6 % des échantillons n'incrémentent pas le compteur de MU**, et il existe
@@ -538,6 +578,83 @@ toutes comme équivalentes.
 - Le désaccord A/B ne mesure que la cohérence interne. Il ne dit **rien** sur la
   justesse absolue : si l'encodeur de la machine se trompe, les deux méthodes se
   trompent ensemble.
+
+---
+
+## 10 quater. ⭐ Séparer le physique du méthodologique
+
+**Certitude : 95 %.** Un écart entre le plan et la délivrance est **normal** —
+l'enjeu n'est pas de le réduire mais de savoir ce qui, dedans, vient de la
+machine et ce qui vient de la façon de mesurer.
+
+Le TRF permet cette séparation, parce qu'il contient **sa propre mesure d'erreur**
+(consigne − réalisé), établie par la machine au même instant, sans rien devoir à
+notre chaîne de traitement.
+
+### La mesure, sans aucune interpolation
+
+Faite à l'échantillon que **la machine elle-même** attribue au point de contrôle.
+Aucun choix méthodologique n'intervient.
+
+| Composante | Médiane | p95 | Max |
+|---|---|---|---|
+| **Physique** — retard du servomoteur, mesuré par la machine | 0,300 mm | 1,20 mm | **2,70 mm** |
+| **Total** — écart au plan | 0,300 mm | 1,20 mm | **9,90 mm** |
+
+**La médiane et le p95 sont identiques.** Sur l'essentiel de la distribution,
+l'écart plan/délivrance **est** le retard servo, et rien d'autre. Le résidu a une
+médiane de 0,000 mm et un p95 de 0,00 mm.
+
+**Le retard servo explique 95,9 % de l'écart cumulé.**
+
+### Le retard servo est une loi propre, pas du bruit
+
+| Vitesse de la lame | Retard médian | p95 |
+|---|---|---|
+| 0 – 2 mm/s | 0,10 mm *(le plancher, donc nul)* | 0,60 |
+| 2 – 5 | 0,20 mm | 0,60 |
+| 5 – 10 | 0,30 mm | 0,70 |
+| 10 – 20 | 0,50 mm | 1,00 |
+| 20 – 30 | 0,80 mm | 1,33 |
+| 30 – 60 | 1,10 mm | 1,84 |
+
+Strictement monotone, et proportionnel à la vitesse : c'est le comportement
+attendu d'un asservissement, la lame traînant derrière sa consigne d'une constante
+de temps. La pente donne environ **24 ms**. Le retard dépasse 1 mm sur 8 % des
+lames, 2 mm sur 0,34 %, et ne dépasse jamais 2,70 mm.
+
+C'est **une caractéristique de la machine** — mesurable, reproductible,
+surveillable dans le temps. C'est probablement l'indicateur le plus intéressant
+que le log puisse fournir.
+
+### Ce qui reste et n'est pas physique
+
+Seules **15 lames sur 9 120** (0,16 %) ont un résidu supérieur à 3 mm. Elles ne
+sont ni rapides ni dispersées : elles se concentrent sur **cinq points de contrôle**
+(69, 70, 79, 80, 81). C'est structurel, pas statistique — à élucider, mais
+marginal.
+
+### Le budget méthodologique, récapitulé
+
+| Source | Ordre de grandeur | Réductible ? |
+|---|---|---|
+| Quantification du format | 0,1 mm | ❌ limite du fichier |
+| Granularité de l'axe des MU | jusqu'à 1 mm sur lame rapide | ⚠️ −15 % via l'horodatage |
+| Interpolation entre échantillons 40 ms | second ordre | ❌ limite du fichier |
+| **Décalage d'indice ±1** | **2,6 mm** | ✅ à vérifier une fois |
+| Choix des lames (fermées incluses ?) | 0,18 → 0,45 mm | ✅ convention à fixer |
+| Recollement d'une séance interrompue | 0,40 → 0,20 mm | ✅ remise à l'échelle |
+
+Les trois dernières lignes sont des **décisions**, pas des fatalités. Les deux
+premières sont le prix du format.
+
+> 👉 **Conclusion pour le cadrage du projet.** La chaîne est essentiellement
+> transparente : sur 95 % des lames elle n'ajoute rien de mesurable au signal
+> physique. Ce qu'on mesure alors, c'est la performance de l'asservissement des
+> lames — pas un artefact de traitement. Reste que ce chiffre ne dit rien de la
+> **justesse absolue** : si l'encodeur de la machine dérive, le log et son erreur
+> dérivent ensemble, sans que rien ne le signale. Le contrôle par mesure
+> indépendante garde donc sa raison d'être.
 
 ---
 
