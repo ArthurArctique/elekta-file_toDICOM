@@ -216,10 +216,12 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
         resume["mu_corps"] = resume["mu_max_faisceau"] = None
         resume["faisceaux"] = resume["mu_brut_min"] = resume["mu_brut_max"] = None
 
-    # L'en-tête donne le total de la machine : c'est lui qui fait foi. La somme
-    # recalculée depuis le corps ne sert que de contrôle — une divergence
-    # signale un souci de décodage, pas un total à corriger.
-    resume["mu"] = resume["mu_entete"]
+    # Le total retenu vient du corps du fichier : il est recalculé depuis les
+    # données réellement enregistrées. L'en-tête porte bien un total, mais il
+    # vaut 0 sur une partie des fichiers — il ne sert donc que de recoupement,
+    # quand il est renseigné.
+    resume["mu"] = resume["mu_corps"] if resume["mu_corps"] is not None else resume["mu_entete"]
+    resume["entete_sans_mu"] = resume["mu_entete"] == 0
 
     # L'état machine sert à ne juger la géométrie que pendant l'irradiation :
     # entre deux faisceaux, le bras tourne et fausserait la détection d'arc.
@@ -270,10 +272,14 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
     # retomber sur celui recalculé depuis le corps du fichier.
     # Chaque faisceau perd jusqu'à un pas de quantification (0,1 MU) au moment
     # où son compteur est remis à zéro : l'écart attendu croît avec leur nombre.
-    if resume["mu_corps"] is not None:
+    # Le recoupement n'a de sens que si l'en-tête annonce quelque chose.
+    if resume["mu_corps"] is not None and not resume["entete_sans_mu"]:
         resume["ecart_mu_entete"] = round(resume["mu_corps"] - resume["mu_entete"], 1)
         tolerance = 0.5 + 0.15 * (resume["faisceaux"] or 1)
         resume["mu_incoherent"] = abs(resume["ecart_mu_entete"]) > tolerance
+    else:
+        resume["ecart_mu_entete"] = None
+        resume["mu_incoherent"] = False
 
     fin = datetime.datetime.strptime(entete["date"], "%y/%m/%d %H:%M:%S Z")
     debut = fin - datetime.timedelta(seconds=resume["duree_s"])
@@ -586,7 +592,7 @@ def main():
     cols_fichiers = [
         "seance", "fichier", "machine", "version", "champ_etiquette", "champ_nom",
         "debut_utc", "fin_utc", "duree_s", "echantillons", "mu", "mu_entete",
-        "mu_corps", "ecart_mu_entete", "mu_incoherent", "faisceaux",
+        "mu_corps", "entete_sans_mu", "ecart_mu_entete", "mu_incoherent", "faisceaux",
         "mu_max_faisceau", "mu_brut_min", "mu_brut_max", "part_irradiation",
         "etat_final", "issue",
         "gantry_debut", "gantry_fin", "gantry_min", "gantry_max",
@@ -628,6 +634,17 @@ def main():
     coupes = [r for r in resumes if r.get("coupures")]
     if coupes:
         print(f"  ⚠ {len(coupes)} fichier(s) avec une coupure d'échantillonnage")
+    muets = [r for r in resumes if r.get("entete_sans_mu")]
+    if muets:
+        print(f"  {len(muets)} fichier(s) dont l'en-tête n'annonce aucune MU "
+              f"(total pris dans le corps du fichier)")
+        etats = {}
+        for r in muets:
+            cle = r.get("etat_final") or "inconnu"
+            etats[cle] = etats.get(cle, 0) + 1
+        print("      états finaux de ces fichiers : "
+              + ", ".join(f"{k} ({n})" for k, n in sorted(etats.items(), key=lambda x: -x[1])))
+
     discordants = [r for r in resumes if r.get("mu_incoherent")]
     if discordants:
         pires = sorted(discordants, key=lambda r: -abs(r["ecart_mu_entete"]))[:3]
