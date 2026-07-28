@@ -306,7 +306,9 @@ def diagnostiquer(octets, nom_fichier):
     print(f"\n=== {nom_fichier} ===")
     print(f"  encodage v{entete['version']} · {entete['nb_colonnes']} colonnes · "
           f"{taille_ligne} o/ligne · {nb_lignes} lignes")
-    print(f"  total annoncé par l'en-tête : {entete['mu_entete']:.1f} MU")
+    muet = entete["mu_entete"] == 0
+    print(f"  total annoncé par l'en-tête : {entete['mu_entete']:.1f} MU"
+          + ("   ⚠ EN-TÊTE MUET" if muet else ""))
 
     if COL_MU not in index:
         print("  ⚠ colonne des MU absente du schéma")
@@ -687,15 +689,21 @@ def main():
         print("  ⚠ ce sont des copies de données patient : à protéger comme les originaux.")
 
     if args.diagnostic:
-        candidats = sorted(
-            (r for r in resumes if r.get("ecart_mu_entete") is not None),
-            key=lambda r: -abs(r["ecart_mu_entete"]),
-        )[: args.diagnostic]
+        # Les anomalies, de la plus parlante à la moins : en-tête muet,
+        # divergence de total, puis les plus gros fichiers à défaut d'anomalie.
+        def rang(r):
+            if r.get("entete_sans_mu"):
+                return (0, -(r.get("mu") or 0))
+            if r.get("mu_incoherent"):
+                return (1, -abs(r.get("ecart_mu_entete") or 0))
+            return (2, -(r.get("echantillons") or 0))
+
+        candidats = sorted(resumes, key=rang)[: args.diagnostic]
         if not candidats:
-            print("\nRien à diagnostiquer : aucun écart mesurable.")
+            print("\nRien à diagnostiquer.")
         else:
             print(f"\n{'=' * 62}")
-            print(f"DIAGNOSTIC des {len(candidats)} fichiers les plus divergents")
+            print(f"DIAGNOSTIC des {len(candidats)} fichiers les plus atypiques")
             print(f"{'=' * 62}")
             for r in candidats:
                 try:
