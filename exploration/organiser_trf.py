@@ -25,16 +25,13 @@ pas à les distinguer de deux séances distinctes : sur les données de référe
 le plus petit intervalle entre deux séances (94 s) était plus court que le plus
 grand intervalle à l'intérieur d'une séance (162 s).
 
-La règle retenue s'appuie donc sur le cumul de MU. Sur une semaine, un même
-champ est délivré plusieurs fois ; le total le plus élevé observé sert de
-référence. Une séance reste ouverte tant que son cumul n'atteint pas ce total.
+La règle s'appuie donc sur ce que la machine dit elle-même : le dernier code
+d'état du fichier. « Terminated Ok » signifie que la délivrance est allée à son
+terme et clôt la séance ; « Terminated Fault » ou « Interupted » signifient que
+la suite est dans le fichier suivant. Aucune estimation n'est nécessaire.
 
-Limite à connaître : cette référence ne vaut que ce que vaut le lot. Si un champ
-n'apparaît qu'en fragments — un traitement commencé en fin de semaine, par
-exemple — la référence sera sous-estimée et les séances mal découpées. La colonne
-`completude` de `seances.csv` sert à repérer ces cas. Le jour où les RT Plan
-seront disponibles, leur `BeamMeterset` remplacera avantageusement cette
-estimation.
+Le cumul de MU ne sert plus que de repli, pour les fichiers où la colonne d'état
+serait absente, et de contrôle a posteriori via la colonne `completude`.
 
 Deux détails du format, établis par la mesure et non par la documentation :
   - la date de l'en-tête marque la **fin** de l'enregistrement, pas le début ;
@@ -66,6 +63,15 @@ COL_MU = "Step Dose/Actual Value (Mu)"
 COL_GANTRY = "Step Gantry/Scaled Actual (deg)"
 COL_ETAT = "Linac State/Actual Value (None)"
 COL_CP = "Control point/Actual Value (None)"
+
+# Codes d'état de fin de délivrance. La machine dit elle-même si elle est allée
+# au bout : c'est un signal bien plus sûr qu'une estimation sur les MU.
+ETAT_TERMINE_OK = 46      # « Terminated Ok »       -> délivrance menée à son terme
+ETATS_INTERROMPU = {43, 44, 47}  # Interupted, Interupted Ready, Terminated Fault
+NOMS_ETATS = {16: "Closed", 34: "State Code Unknown", 39: "Move Only", 40: "Pause",
+              41: "Intersegment", 42: "Radiation On", 43: "Interupted",
+              44: "Interupted Ready", 45: "Terminated Checking",
+              46: "Terminated Ok", 47: "Terminated Fault"}
 
 PAS = 0.04  # 25 Hz
 
@@ -194,7 +200,10 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
     mu = colonne(COL_MU)
     if mu is not None:
         mu = mu / 10.0
-        ruptures = np.where(np.diff(mu) < 0)[0]
+        # Une remise à zéro doit être une vraie chute : un simple bruit d'un
+        # dixième de MU ne doit pas être pris pour une frontière de faisceau.
+        seuil = max(1.0, 0.2 * float(mu.max()))
+        ruptures = np.where(np.diff(mu) < -seuil)[0]
         segments = [float(mu[i]) for i in ruptures] + [float(mu[-1])]
         resume["mu"] = round(sum(segments), 1)
         resume["mu_max_faisceau"] = round(max(segments), 1)
@@ -208,6 +217,16 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
     irradie = etat == 42 if etat is not None else None  # 42 = « Radiation On »
     if irradie is not None:
         resume["part_irradiation"] = round(float(irradie.mean()), 3)
+        code_final = int(etat[-1])
+        resume["etat_final"] = NOMS_ETATS.get(code_final, str(code_final))
+        if code_final == ETAT_TERMINE_OK:
+            resume["issue"] = "terminee"
+        elif code_final in ETATS_INTERROMPU:
+            resume["issue"] = "interrompue"
+        else:
+            resume["issue"] = "indeterminee"
+    else:
+        resume["etat_final"] = resume["issue"] = None
 
     gantry = colonne(COL_GANTRY)
     if gantry is not None:
@@ -365,8 +384,14 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
             ).total_seconds()
             if ecart > ecart_max_s:
                 raison = f"écart de {ecart / 60:.0f} min"
-            elif total_attendu and courante["mu_cumul"] >= seuil_complet * total_attendu:
-                raison = "la séance précédente était complète"
+            elif courante["issue"] == "terminee":
+                # La machine a écrit « Terminated Ok » : la séance est close.
+                raison = "délivrance précédente menée à son terme"
+            elif courante["issue"] is None and total_attendu and (
+                courante["mu_cumul"] >= seuil_complet * total_attendu
+            ):
+                # Repli quand l'état machine est absent du fichier.
+                raison = "cumul de MU atteint (état machine indisponible)"
 
         if raison:
             courante = {
@@ -380,6 +405,8 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
                 "nb_fichiers": 1,
                 "mu_cumul": r.get("mu") or 0.0,
                 "mu_reference": round(total_attendu, 1),
+                "issue": r.get("issue"),
+                "etat_final": r.get("etat_final"),
                 "ouverture": raison,
             }
             seances.append(courante)
@@ -388,6 +415,8 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
             courante["nb_fichiers"] += 1
             courante["mu_cumul"] += r.get("mu") or 0.0
             courante["fin_utc"] = r["fin_utc"]
+            courante["issue"] = r.get("issue")
+            courante["etat_final"] = r.get("etat_final")
 
         r["seance"] = courante["seance"]
 
@@ -397,13 +426,13 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
         s["completude"] = round(s["mu_cumul"] / ref, 3) if ref else None
         s["fichiers"] = " | ".join(s["fichiers"])
         s["doute"] = ""
-        if s["nb_fichiers"] > 1:
-            s["doute"] = "reconstituée à partir de plusieurs fichiers"
-        if ref and s["mu_cumul"] < seuil_complet * ref:
+        if s["issue"] == "interrompue":
             s["doute"] = (
-                f"cumul incomplet ({s['completude']:.0%} de la référence) — "
-                "séance tronquée, ou référence mal estimée"
+                f"se termine sur « {s['etat_final']} » : la suite manque, "
+                "ou la séance a été abandonnée"
             )
+        elif s["issue"] == "indeterminee":
+            s["doute"] = f"état final inhabituel : « {s['etat_final']} »"
 
     return seances
 
@@ -466,14 +495,15 @@ def main():
         "seance", "fichier", "machine", "version", "champ_etiquette", "champ_nom",
         "debut_utc", "fin_utc", "duree_s", "echantillons", "mu", "mu_entete",
         "ecart_mu_entete", "faisceaux", "mu_max_faisceau", "part_irradiation",
+        "etat_final", "issue",
         "gantry_debut", "gantry_fin", "gantry_min", "gantry_max",
         "angles_irradies", "arc", "cp_min", "cp_max", "coupures",
         "octets_par_ligne", "reste_octets", "fuseau",
     ]
     cols_seances = [
         "seance", "machine", "champ_etiquette", "champ_nom", "debut_utc", "fin_utc",
-        "nb_fichiers", "mu_cumul", "mu_reference", "completude", "ouverture",
-        "doute", "fichiers",
+        "nb_fichiers", "mu_cumul", "mu_reference", "completude", "etat_final",
+        "issue", "ouverture", "doute", "fichiers",
     ]
     ecrire_csv(sortie / "fichiers.csv", sorted(resumes, key=lambda r: r["debut_utc"]), cols_fichiers)
     ecrire_csv(sortie / "seances.csv", seances, cols_seances)
