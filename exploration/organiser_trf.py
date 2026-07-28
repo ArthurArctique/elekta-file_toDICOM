@@ -200,10 +200,12 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
     mu = colonne(COL_MU)
     if mu is not None:
         mu = mu / 10.0
-        # Une remise à zéro doit être une vraie chute : un simple bruit d'un
-        # dixième de MU ne doit pas être pris pour une frontière de faisceau.
-        seuil = max(1.0, 0.2 * float(mu.max()))
-        ruptures = np.where(np.diff(mu) < -seuil)[0]
+        # Un compteur remis à zéro retombe exactement sur 0 : c'est cette
+        # signature qu'on cherche, et non l'ampleur de la chute. Un seuil sur
+        # l'ampleur raterait les petits faisceaux ; se contenter d'une
+        # différence négative prendrait le moindre bruit pour une frontière.
+        plancher = max(0.5, 0.01 * float(mu.max()))
+        ruptures = np.where((np.diff(mu) < 0) & (mu[1:] <= plancher))[0]
         segments = [float(mu[i]) for i in ruptures] + [float(mu[-1])]
         resume["mu"] = round(sum(segments), 1)
         resume["mu_max_faisceau"] = round(max(segments), 1)
@@ -258,8 +260,12 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
 
     # Contrôle d'intégrité gratuit : le total de MU annoncé par l'en-tête doit
     # retomber sur celui recalculé depuis le corps du fichier.
+    # Chaque faisceau perd jusqu'à un pas de quantification (0,1 MU) au moment
+    # où son compteur est remis à zéro : l'écart attendu croît avec leur nombre.
     if resume["mu"] is not None:
         resume["ecart_mu_entete"] = round(resume["mu"] - resume["mu_entete"], 1)
+        tolerance = 0.5 + 0.15 * (resume["faisceaux"] or 1)
+        resume["mu_incoherent"] = abs(resume["ecart_mu_entete"]) > tolerance
 
     fin = datetime.datetime.strptime(entete["date"], "%y/%m/%d %H:%M:%S Z")
     debut = fin - datetime.timedelta(seconds=resume["duree_s"])
@@ -494,7 +500,8 @@ def main():
     cols_fichiers = [
         "seance", "fichier", "machine", "version", "champ_etiquette", "champ_nom",
         "debut_utc", "fin_utc", "duree_s", "echantillons", "mu", "mu_entete",
-        "ecart_mu_entete", "faisceaux", "mu_max_faisceau", "part_irradiation",
+        "ecart_mu_entete", "mu_incoherent", "faisceaux", "mu_max_faisceau",
+        "part_irradiation",
         "etat_final", "issue",
         "gantry_debut", "gantry_fin", "gantry_min", "gantry_max",
         "angles_irradies", "arc", "cp_min", "cp_max", "coupures",
@@ -535,10 +542,14 @@ def main():
     coupes = [r for r in resumes if r.get("coupures")]
     if coupes:
         print(f"  ⚠ {len(coupes)} fichier(s) avec une coupure d'échantillonnage")
-    discordants = [r for r in resumes if abs(r.get("ecart_mu_entete") or 0) > 1.0]
+    discordants = [r for r in resumes if r.get("mu_incoherent")]
     if discordants:
+        pires = sorted(discordants, key=lambda r: -abs(r["ecart_mu_entete"]))[:3]
         print(f"  ⚠ {len(discordants)} fichier(s) où les MU du corps et de l'en-tête "
-              f"divergent de plus de 1 MU — décodage à vérifier")
+              f"divergent au-delà de la tolérance")
+        for r in pires:
+            print(f"      {r['fichier'][-40:]} : {r['ecart_mu_entete']:+.1f} MU "
+                  f"sur {r['faisceaux']} faisceau(x)")
     inconnues = sorted({c for r in resumes for c in r.get("colonnes_inconnues", [])})
     if inconnues:
         print(f"  ⚠ {len(inconnues)} code(s) de colonne absent(s) du dictionnaire : "
