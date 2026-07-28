@@ -207,11 +207,19 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
         plancher = max(0.5, 0.01 * float(mu.max()))
         ruptures = np.where((np.diff(mu) < 0) & (mu[1:] <= plancher))[0]
         segments = [float(mu[i]) for i in ruptures] + [float(mu[-1])]
-        resume["mu"] = round(sum(segments), 1)
+        resume["mu_corps"] = round(sum(segments), 1)
         resume["mu_max_faisceau"] = round(max(segments), 1)
         resume["faisceaux"] = len(segments)
+        resume["mu_brut_min"] = int(mu.min() * 10)
+        resume["mu_brut_max"] = int(mu.max() * 10)
     else:
-        resume["mu"] = resume["mu_max_faisceau"] = resume["faisceaux"] = None
+        resume["mu_corps"] = resume["mu_max_faisceau"] = None
+        resume["faisceaux"] = resume["mu_brut_min"] = resume["mu_brut_max"] = None
+
+    # L'en-tête donne le total de la machine : c'est lui qui fait foi. La somme
+    # recalculée depuis le corps ne sert que de contrôle — une divergence
+    # signale un souci de décodage, pas un total à corriger.
+    resume["mu"] = resume["mu_entete"]
 
     # L'état machine sert à ne juger la géométrie que pendant l'irradiation :
     # entre deux faisceaux, le bras tourne et fausserait la détection d'arc.
@@ -262,8 +270,8 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
     # retomber sur celui recalculé depuis le corps du fichier.
     # Chaque faisceau perd jusqu'à un pas de quantification (0,1 MU) au moment
     # où son compteur est remis à zéro : l'écart attendu croît avec leur nombre.
-    if resume["mu"] is not None:
-        resume["ecart_mu_entete"] = round(resume["mu"] - resume["mu_entete"], 1)
+    if resume["mu_corps"] is not None:
+        resume["ecart_mu_entete"] = round(resume["mu_corps"] - resume["mu_entete"], 1)
         tolerance = 0.5 + 0.15 * (resume["faisceaux"] or 1)
         resume["mu_incoherent"] = abs(resume["ecart_mu_entete"]) > tolerance
 
@@ -273,6 +281,71 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
     resume["fin_utc"] = fin.isoformat(sep=" ")
 
     return resume
+
+
+def diagnostiquer(octets, nom_fichier):
+    """Détaille la structure du compteur de MU d'un seul fichier.
+
+    Sert à comprendre une divergence entre le total de l'en-tête et celui
+    recalculé depuis le corps. N'affiche que des chiffres : ni positions de
+    lames, ni identifiant patient.
+    """
+    entete = lire_entete(octets)
+    v = VERSIONS[entete["version"]]
+    taille_ligne = v["echelle"] * entete["nb_colonnes"] * 2 + v["prefixe"]
+    corps = octets[entete["fin_entete"]:]
+    nb_lignes = len(corps) // taille_ligne
+    index = {nom: i for i, nom in enumerate(entete["colonnes"])}
+
+    print(f"\n=== {nom_fichier} ===")
+    print(f"  encodage v{entete['version']} · {entete['nb_colonnes']} colonnes · "
+          f"{taille_ligne} o/ligne · {nb_lignes} lignes")
+    print(f"  total annoncé par l'en-tête : {entete['mu_entete']:.1f} MU")
+
+    if COL_MU not in index:
+        print("  ⚠ colonne des MU absente du schéma")
+        return
+    brut = extraire_colonne(corps, nb_lignes, taille_ligne, v["prefixe"],
+                            v["echelle"] * 2, index[COL_MU])
+    mu = brut / 10.0
+    print(f"  colonne des MU, valeurs brutes : min={int(brut.min())} max={int(brut.max())}")
+    if brut.min() < -30000 or brut.max() > 30000:
+        print("    ⚠ on frôle les bornes d'un entier 16 bits (±32767) : "
+              "débordement probable")
+    negatifs = int((brut < 0).sum())
+    if negatifs:
+        print(f"    ⚠ {negatifs} valeur(s) négative(s) — un compteur de dose ne "
+              "devrait jamais l'être")
+
+    d = np.diff(mu)
+    plancher = max(0.5, 0.01 * float(mu.max()))
+    chutes = np.where(d < 0)[0]
+    vers_zero = np.where((d < 0) & (mu[1:] <= plancher))[0]
+    print(f"  chutes du compteur : {len(chutes)} au total, dont {len(vers_zero)} "
+          f"retombant sous {plancher:.1f} MU")
+    if len(chutes):
+        arrivees = mu[chutes + 1]
+        print(f"    valeurs d'arrivée : min={arrivees.min():.1f} "
+              f"médiane={np.median(arrivees):.1f} max={arrivees.max():.1f}")
+        amplitudes = -d[chutes]
+        print(f"    amplitudes        : min={amplitudes.min():.1f} "
+              f"médiane={np.median(amplitudes):.1f} max={amplitudes.max():.1f}")
+
+    segments = [float(mu[i]) for i in vers_zero] + [float(mu[-1])]
+    print(f"  segments retenus : {len(segments)} -> total {sum(segments):.1f} MU "
+          f"(écart {sum(segments) - entete['mu_entete']:+.1f})")
+    apercu = ", ".join(f"{x:.1f}" for x in segments[:12])
+    print(f"    {apercu}{' …' if len(segments) > 12 else ''}")
+
+    if COL_ETAT in index:
+        etat = extraire_colonne(corps, nb_lignes, taille_ligne, v["prefixe"],
+                                v["echelle"] * 2, index[COL_ETAT])
+        comptes = {}
+        for code in etat.astype(int):
+            comptes[code] = comptes.get(code, 0) + 1
+        libelles = ", ".join(f"{NOMS_ETATS.get(c, c)}={n}"
+                             for c, n in sorted(comptes.items(), key=lambda x: -x[1]))
+        print(f"  états machine : {libelles}")
 
 
 def parcourir(chemins):
@@ -463,6 +536,11 @@ def main():
         help="au-delà de cet écart en secondes, on ouvre une nouvelle séance (défaut : 1800)",
     )
     analyseur.add_argument(
+        "--diagnostic", action="store_true",
+        help="détaille la structure du compteur de MU de chaque fichier fourni, "
+             "au lieu de produire l'inventaire. Pour comprendre une divergence.",
+    )
+    analyseur.add_argument(
         "--extraire", metavar="DOSSIER",
         help="copie en plus les TRF dans un dossier par séance. Duplique des "
              "données patient sur le disque : à n'utiliser qu'en connaissance de cause.",
@@ -473,6 +551,14 @@ def main():
              "réputée complète (défaut : 0.97)",
     )
     args = analyseur.parse_args()
+
+    if args.diagnostic:
+        for nom, _, octets in parcourir(args.sources):
+            try:
+                diagnostiquer(octets, nom)
+            except Exception as e:
+                print(f"\n=== {nom} ===\n  illisible : {e}")
+        return 0
 
     resumes, illisibles = [], []
     for n, (nom, origine, octets) in enumerate(parcourir(args.sources), 1):
@@ -500,8 +586,8 @@ def main():
     cols_fichiers = [
         "seance", "fichier", "machine", "version", "champ_etiquette", "champ_nom",
         "debut_utc", "fin_utc", "duree_s", "echantillons", "mu", "mu_entete",
-        "ecart_mu_entete", "mu_incoherent", "faisceaux", "mu_max_faisceau",
-        "part_irradiation",
+        "mu_corps", "ecart_mu_entete", "mu_incoherent", "faisceaux",
+        "mu_max_faisceau", "mu_brut_min", "mu_brut_max", "part_irradiation",
         "etat_final", "issue",
         "gantry_debut", "gantry_fin", "gantry_min", "gantry_max",
         "angles_irradies", "arc", "cp_min", "cp_max", "coupures",
