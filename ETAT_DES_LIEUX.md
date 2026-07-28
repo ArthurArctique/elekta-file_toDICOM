@@ -171,13 +171,65 @@ Les trois dernières lignes sont des **décisions**, pas des fatalités.
 
 ---
 
+## 3 bis. Premier lot réel : ce qu'il a appris
+
+420 fichiers, une semaine, une machine, **0 illisible**. Le format d'en-tête de
+votre parc est donc compatible : le problème d'Integrity 4.1.0.0
+([pymedphys#1890](https://github.com/pymedphys/pymedphys/issues/1890)) ne vous
+concerne pas.
+
+**Encodage : v3 sur la totalité du lot.** C'est celui des données de référence
+utilisées dans tout ce document. Rien n'est extrapolé hors du domaine vérifié, et
+la branche v4 — jamais testable faute de fichier — ne vous concerne pas non plus.
+
+### Une anomalie non élucidée, sans conséquence pratique
+
+**62 fichiers portent un en-tête dont le total de MU vaut zéro**, dont **57
+délivrent pourtant une dose bien réelle**. Répartition de leur état final :
+`State Code Unknown` (44), `Terminated Ok` (13), `Terminated Fault` (5).
+
+Hypothèses testées et **toutes écartées** :
+
+| Piste | Verdict |
+|---|---|
+| Enregistrements sans traitement (imagerie, mise en place) | ❌ ils portent une dose |
+| Machine ou firmware particulier | ❌ une seule machine dans le lot |
+| Version d'encodage différente | ❌ v3 comme tout le reste |
+| Fichier tronqué à la source | ❌ la date d'en-tête, qui marque la fin de l'écriture, est valide : l'en-tête a bien été finalisé |
+| Total écrit seulement quand la délivrance conclut | ❌ 39 des 57 sont des séances complètes en un seul fichier |
+
+Le seul lien qui subsiste est statistique : 44 de ces 62 fichiers se terminent sur
+le code d'état **34**, que pymedphys nomme lui-même « State Code Unknown ». Ce que
+vaut ce code demanderait la documentation d'Elekta.
+
+**Sans conséquence pratique** : le total de MU est recalculé depuis le corps du
+fichier, qui est correct, et le découpage en séances s'appuie sur l'état machine.
+Ces fichiers sont exploitables comme les autres. La colonne `entete_sans_mu` de
+`fichiers.csv` permet de les isoler si besoin.
+
+### Ce qui a été corrigé au passage
+
+Le découpage initial signalait **130 séances sur 356**. Il reposait sur une
+estimation du total attendu par champ, or le nom de champ n'est pas unique par
+patient : la référence était le maximum sur tous les patients confondus, donc
+presque tout paraissait incomplet.
+
+La machine écrit son propre verdict dans le **dernier code d'état** du fichier :
+`Terminated Ok` clôt la séance, `Terminated Fault` ou `Interupted` annoncent que
+la suite est dans le fichier suivant. Aucune estimation n'est nécessaire. Les
+séances signalées sont tombées à **41**, et ce sont désormais de vrais signaux —
+traitements abandonnés ou états inhabituels.
+
+---
+
 ## 4. Ce qu'on ne sait pas
 
 À opposer à tout ce qui précède.
 
-**L'assiette est étroite.** Un seul site, deux machines, trois séances, des
-données de 2019-2020, versions d'encodage 1 et 3. La **version 4 n'a jamais été
-testée** faute de fichier.
+**L'assiette de validation reste étroite.** Les mesures de qualité des §2 et §3
+viennent d'un seul site, trois séances, des données de 2019-2020. Le lot réel de
+420 fichiers a confirmé le décodage et le découpage, mais **aucune mesure d'écart
+au plan n'a encore été faite sur vos données** — faute de RT Plan.
 
 **Ce n'est que de la cohérence interne.** Les deux méthodes confrontées lisent le
 même capteur. Si l'encodeur de la machine dérive, elles dérivent ensemble sans
@@ -201,9 +253,8 @@ Structurel, donc élucidable, mais non élucidé.
 
 | Il faut | Pour |
 |---|---|
-| **Un RT Plan** apparié à une séance réelle | Remplacer l'estimation de référence, vérifier le décalage d'indice sur vos données |
-| Confirmer la **licence TRF** auprès d'Elekta | Sans elle, pas de données du tout |
-| Un fichier en **version 4** | Seule branche de décodage jamais vérifiée |
+| **Un RT Plan** apparié à une des séances déjà découpées | Le seul verrou restant. Il permet de vérifier le décalage d'indice sur vos données et de produire la première comparaison réelle |
 | Fixer les **seuils d'acceptation** | Définir ce qui est conforme (repère externe : ±0,2 mm dans la littérature) |
+| *(sans objet)* Licence TRF, version d'encodage 4 | Réglés par le premier lot : les fichiers arrivent, et ils sont en v3 |
 
 Le reste est de l'ingénierie dont le principe est validé.
