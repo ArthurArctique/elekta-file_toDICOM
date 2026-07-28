@@ -7,3 +7,12 @@
 *.trf
 *.dcm
 data/
+
+# Python
+__pycache__/
+*.pyc
+
+# Rapports produits par organiser_trf.py (identifiants de champ)
+rapport/
+fichiers.csv
+seances.csv
