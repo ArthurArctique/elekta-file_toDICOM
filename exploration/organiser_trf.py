@@ -670,6 +670,18 @@ def main():
         print("      états finaux : "
               + ", ".join(f"{k} ({n})" for k, n in sorted(etats.items(), key=lambda x: -x[1])))
 
+    def croiser(lignes, titre, cles):
+        """Répartit un sous-ensemble selon plusieurs clés, pour situer une anomalie."""
+        print(f"      {titre}")
+        for cle, libelle in cles:
+            comptes = {}
+            for r in lignes:
+                v = r.get(cle)
+                v = "—" if v is None else str(v)
+                comptes[v] = comptes.get(v, 0) + 1
+            detail = ", ".join(f"{k} ({n})" for k, n in sorted(comptes.items(), key=lambda x: -x[1])[:6])
+            print(f"        par {libelle:<18} {detail}")
+
     muets = [r for r in resumes if r.get("entete_sans_mu")]
     if muets:
         avec_dose = [r for r in muets if r.get("delivrance")]
@@ -685,6 +697,31 @@ def main():
             doses = sorted(r["mu"] for r in avec_dose)
             print(f"      doses relevées dans le corps : min={doses[0]:.1f} "
                   f"médiane={doses[len(doses) // 2]:.1f} max={doses[-1]:.1f} MU")
+            croiser(avec_dose,
+                    "d'où viennent ces fichiers qui délivrent sans l'annoncer :",
+                    [("machine", "machine"), ("version", "encodage"),
+                     ("etat_final", "état final"), ("faisceaux", "faisceaux"),
+                     ("arc", "arc")])
+            # Un enregistrement interrompu en cours d'écriture n'aurait pas eu le
+            # temps de passer par la séquence de clôture.
+            sans_cloture = [r for r in avec_dose
+                            if (r.get("etat_final") or "") not in
+                            ("Terminated Ok", "Terminated Fault")]
+            if sans_cloture:
+                print(f"        {len(sans_cloture)} ne passent par aucun état de "
+                      f"clôture connu : enregistrement peut-être tronqué à la source")
+            # Comparaison avec le reste du lot, pour voir si c'est une population à part
+            normaux = [r for r in resumes if not r.get("entete_sans_mu")]
+            if normaux:
+                print("      pour comparaison, les fichiers à en-tête renseigné :")
+                for cle, lib in (("machine", "machine"), ("version", "encodage")):
+                    comptes = {}
+                    for r in normaux:
+                        v = str(r.get(cle))
+                        comptes[v] = comptes.get(v, 0) + 1
+                    print(f"        par {lib:<18} "
+                          + ", ".join(f"{k} ({n})" for k, n in
+                                      sorted(comptes.items(), key=lambda x: -x[1])[:6]))
 
     discordants = [r for r in resumes if r.get("mu_incoherent")]
     if discordants:
