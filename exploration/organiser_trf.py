@@ -528,6 +528,24 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
 
         r["seance"] = active["seance"]
 
+    # Position de chaque fichier dans sa séance : un fichier destiné à être
+    # poursuivi ne se comporte peut-être pas comme celui qui conclut.
+    for s in seances:
+        noms = s["fichiers"]
+        for i, nom in enumerate(noms):
+            if len(noms) == 1:
+                place = "seul"
+            elif i == 0:
+                place = "premier"
+            elif i == len(noms) - 1:
+                place = "dernier"
+            else:
+                place = "milieu"
+            for r in resumes:
+                if r["fichier"] == nom:
+                    r["place_dans_seance"] = place
+                    break
+
     for s in seances:
         s["mu_cumul"] = round(s["mu_cumul"], 1)
         ref = s["mu_reference"]
@@ -617,7 +635,7 @@ def main():
     cols_fichiers = [
         "seance", "fichier", "machine", "version", "champ_etiquette", "champ_nom",
         "debut_utc", "fin_utc", "duree_s", "echantillons", "mu", "mu_entete",
-        "delivrance", "mu_corps", "entete_sans_mu", "ecart_mu_entete",
+        "place_dans_seance", "delivrance", "mu_corps", "entete_sans_mu", "ecart_mu_entete",
         "mu_incoherent", "faisceaux",
         "mu_max_faisceau", "mu_brut_min", "mu_brut_max", "part_irradiation",
         "etat_final", "issue",
@@ -699,8 +717,9 @@ def main():
                   f"médiane={doses[len(doses) // 2]:.1f} max={doses[-1]:.1f} MU")
             croiser(avec_dose,
                     "d'où viennent ces fichiers qui délivrent sans l'annoncer :",
-                    [("machine", "machine"), ("version", "encodage"),
-                     ("etat_final", "état final"), ("faisceaux", "faisceaux"),
+                    [("place_dans_seance", "place dans la séance"),
+                     ("etat_final", "état final"), ("machine", "machine"),
+                     ("version", "encodage"), ("faisceaux", "faisceaux"),
                      ("arc", "arc")])
             # Un enregistrement interrompu en cours d'écriture n'aurait pas eu le
             # temps de passer par la séquence de clôture.
@@ -714,7 +733,8 @@ def main():
             normaux = [r for r in resumes if not r.get("entete_sans_mu")]
             if normaux:
                 print("      pour comparaison, les fichiers à en-tête renseigné :")
-                for cle, lib in (("machine", "machine"), ("version", "encodage")):
+                for cle, lib in (("place_dans_seance", "place dans la séance"),
+                                 ("etat_final", "état final")):
                     comptes = {}
                     for r in normaux:
                         v = str(r.get(cle))
