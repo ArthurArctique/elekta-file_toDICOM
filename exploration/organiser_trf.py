@@ -11,6 +11,10 @@ Produit deux tableaux CSV :
   fichiers.csv  une ligne par TRF, avec ses métadonnées
   seances.csv   une ligne par séance reconstituée
 
+Par défaut rien n'est déplacé ni copié : les séances n'existent que comme lignes
+de `seances.csv`, dont la colonne `fichiers` liste leur composition. L'option
+`--extraire` crée en plus un dossier par séance.
+
 Pourquoi ce n'est pas trivial
 -----------------------------
 Une séance interrompue puis reprise s'écrit en **plusieurs fichiers**, chacun
@@ -147,7 +151,7 @@ def extraire_colonne(corps, nb_lignes, taille_ligne, prefixe, taille, indice):
     return tranche.view(np.int16 if taille == 2 else np.int32).ravel().astype(float)
 
 
-def resumer(octets, nom_fichier):
+def resumer(octets, nom_fichier, origine=("fichier", "", "")):
     """Métadonnées d'un TRF, sans décoder les 350 colonnes."""
     entete = lire_entete(octets)
     v = VERSIONS[entete["version"]]
@@ -159,6 +163,7 @@ def resumer(octets, nom_fichier):
 
     resume = {
         "fichier": nom_fichier,
+        "origine": origine,
         "machine": entete["machine"],
         "version": entete["version"],
         "champ_etiquette": entete["champ_etiquette"],
@@ -237,28 +242,91 @@ def resumer(octets, nom_fichier):
 
     fin = datetime.datetime.strptime(entete["date"], "%y/%m/%d %H:%M:%S Z")
     debut = fin - datetime.timedelta(seconds=resume["duree_s"])
-    resume["debut_utc"] = debut.isoformat(sep=" ")
+    resume["debut_utc"] = debut.replace(microsecond=0).isoformat(sep=" ")
     resume["fin_utc"] = fin.isoformat(sep=" ")
 
     return resume
 
 
 def parcourir(chemins):
-    """Rend (nom, octets) pour chaque .trf trouvé, dans les zip comme sur disque."""
+    """Rend (nom, origine, octets) pour chaque .trf, dans les zip comme sur disque.
+
+    `origine` permet de relire le fichier plus tard sans tout garder en mémoire.
+    """
     for chemin in chemins:
         p = pathlib.Path(chemin)
         if p.is_dir():
             for f in sorted(p.rglob("*.trf")):
-                yield str(f.relative_to(p)), f.read_bytes()
+                yield str(f.relative_to(p)), ("fichier", str(f), ""), f.read_bytes()
         elif p.suffix.lower() == ".zip":
             with zipfile.ZipFile(p) as archive:
                 for nom in sorted(archive.namelist()):
                     if nom.lower().endswith(".trf"):
-                        yield f"{p.name}::{nom}", archive.read(nom)
+                        yield f"{p.name}::{nom}", ("zip", str(p), nom), archive.read(nom)
         elif p.suffix.lower() == ".trf":
-            yield p.name, p.read_bytes()
+            yield p.name, ("fichier", str(p), ""), p.read_bytes()
         else:
             print(f"  ignoré (ni zip, ni dossier, ni .trf) : {p}", file=sys.stderr)
+
+
+def relire(origine):
+    genre, chemin, interne = origine
+    if genre == "zip":
+        with zipfile.ZipFile(chemin) as archive:
+            return archive.read(interne)
+    return pathlib.Path(chemin).read_bytes()
+
+
+def assainir(texte, defaut="sans-nom"):
+    """Rend un fragment de nom de dossier sûr sur tous les systèmes."""
+    propre = re.sub(r"[^A-Za-z0-9._-]+", "-", texte).strip("-")
+    return propre[:40] or defaut
+
+
+def extraire_seances(seances, resumes, destination):
+    """Copie les TRF dans un dossier par séance. Ne supprime jamais la source."""
+    par_fichier = {r["fichier"]: r for r in resumes}
+    destination = pathlib.Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+
+    total_octets, total_fichiers = 0, 0
+    for s in seances:
+        debut = datetime.datetime.fromisoformat(s["debut_utc"])
+        nom = (
+            f"{debut:%Y-%m-%d_%H%M%S}_{assainir(s['machine'], 'machine')}"
+            f"_s{s['seance']:04d}_{assainir(s['champ_nom'])}"
+        )
+        dossier = destination / nom
+        dossier.mkdir(exist_ok=True)
+
+        for chemin_affiche in s["fichiers"].split(" | "):
+            r = par_fichier.get(chemin_affiche)
+            if r is None:
+                continue
+            octets = relire(r["origine"])
+            cible = dossier / pathlib.PurePath(chemin_affiche.split("::")[-1]).name
+            if cible.exists() and cible.read_bytes() == octets:
+                continue
+            cible.write_bytes(octets)
+            total_octets += len(octets)
+            total_fichiers += 1
+
+        recap = [
+            f"séance {s['seance']}",
+            f"machine        {s['machine']}",
+            f"champ          {s['champ_etiquette']}/{s['champ_nom']}",
+            f"début (UTC)    {s['debut_utc']}",
+            f"fin (UTC)      {s['fin_utc']}",
+            f"fichiers       {s['nb_fichiers']}",
+            f"MU cumulées    {s['mu_cumul']} (référence du champ : {s['mu_reference']})",
+            f"complétude     {s['completude']}",
+            f"ouverture      {s['ouverture']}",
+        ]
+        if s["doute"]:
+            recap.append(f"À VÉRIFIER     {s['doute']}")
+        (dossier / "seance.txt").write_text("\n".join(recap) + "\n", encoding="utf-8")
+
+    return total_fichiers, total_octets
 
 
 def regrouper(resumes, ecart_max_s, seuil_complet):
@@ -358,6 +426,11 @@ def main():
         help="au-delà de cet écart en secondes, on ouvre une nouvelle séance (défaut : 1800)",
     )
     analyseur.add_argument(
+        "--extraire", metavar="DOSSIER",
+        help="copie en plus les TRF dans un dossier par séance. Duplique des "
+             "données patient sur le disque : à n'utiliser qu'en connaissance de cause.",
+    )
+    analyseur.add_argument(
         "--seuil-complet", type=float, default=0.97,
         help="fraction du total de référence à partir de laquelle une séance est "
              "réputée complète (défaut : 0.97)",
@@ -365,11 +438,11 @@ def main():
     args = analyseur.parse_args()
 
     resumes, illisibles = [], []
-    for n, (nom, octets) in enumerate(parcourir(args.sources), 1):
+    for n, (nom, origine, octets) in enumerate(parcourir(args.sources), 1):
         if n % 250 == 0:
             print(f"  … {n} fichiers lus", file=sys.stderr, flush=True)
         try:
-            resumes.append(resumer(octets, nom))
+            resumes.append(resumer(octets, nom, origine))
         except TrfIllisible as e:
             illisibles.append((nom, str(e)))
         except Exception as e:  # un fichier abîmé ne doit pas tout arrêter
@@ -446,6 +519,12 @@ def main():
                   f"· {s['nb_fichiers']} fichier(s) · {s['doute']}")
         if len(doutes) > 10:
             print(f"  … et {len(doutes) - 10} autres")
+
+    if args.extraire:
+        nb, octets = extraire_seances(seances, resumes, args.extraire)
+        print(f"\n{nb} fichier(s) copiés ({octets / 1e6:.0f} Mo) dans "
+              f"{len(seances)} dossiers sous {args.extraire}")
+        print("  ⚠ ce sont des copies de données patient : à protéger comme les originaux.")
 
     print(f"\nÉcrit : {sortie / 'fichiers.csv'}  et  {sortie / 'seances.csv'}")
     print("Ces tableaux contiennent des identifiants de champ de traitement : "
