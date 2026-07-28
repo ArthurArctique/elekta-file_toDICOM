@@ -24,33 +24,41 @@ Mesuré sur la séance de référence :
 
 Les deux plages se chevauchent. Aucun seuil de durée ne peut les séparer.
 
-### La règle retenue
+### La règle retenue : demander à la machine
 
-Sur une semaine, un même champ est délivré plusieurs fois. Le **total de MU le
-plus élevé observé** pour ce champ sert de référence. Une séance reste ouverte
-tant que son cumul ne l'atteint pas.
+La machine écrit son propre verdict dans le **dernier code d'état** du fichier.
+`Terminated Ok` signifie que la délivrance est allée à son terme et clôt la
+séance ; `Terminated Fault` ou `Interupted` signifient que la suite est dans le
+fichier suivant.
 
-Une nouvelle séance s'ouvre si la machine change, si le champ change, si
-l'intervalle dépasse 30 min, ou si la séance précédente avait atteint sa
-référence.
+Aucune estimation n'est nécessaire. Une nouvelle séance s'ouvre si la machine
+change, si le champ change, si l'intervalle dépasse 30 min, ou si la délivrance
+précédente s'est conclue.
+
+Un fichier portant moins de 1 MU est isolé comme « sans dose » — mais reste
+transparent au chaînage, pour qu'un cliché glissé entre deux fragments ne coupe
+pas la séance.
 
 ### Ce que ça vaut
 
-✅ Validé sur la seule vérité terrain disponible : **3 séances reconstituées
-correctement**, dont une interrompue trois fois et répartie sur 4 fichiers.
+✅ Vérité terrain : **3 séances reconstituées correctement**, dont une
+interrompue trois fois et répartie sur 4 fichiers.
 
-⚠️ **C'est une validation mince.** Un site, une machine, six fichiers, un seul
-cas d'interruption. Rien ne garantit la tenue sur un vrai lot hebdomadaire.
+✅ Lot réel de 420 fichiers : **41 séances signalées sur 356**, et ce sont de
+vrais signaux — traitements abandonnés ou états inhabituels.
 
-⚠️ **La référence ne vaut que ce que vaut le lot.** Un champ qui n'apparaît
-qu'en fragments — traitement commencé en fin de semaine — donnera une référence
-sous-estimée et un découpage faux. La colonne `completude` sert à repérer ces cas.
+⚠️ **Le contrôle croisé manque encore.** Rien n'a confronté ce découpage à une
+source indépendante — un dossier de traitement, un R&V. Il est cohérent, ce qui
+ne prouve pas qu'il soit juste.
 
-### Ce qui rendrait la chose solide
+### Une première version, écartée
 
-Le `BeamMeterset` du RT Plan donne le total attendu **sans estimation**. Le jour
-où les plans seront disponibles, cette heuristique devient inutile. C'est la
-principale raison d'accélérer leur obtention.
+Le découpage s'appuyait d'abord sur une estimation du total attendu par champ,
+prise comme le maximum observé sur le lot. Elle signalait **130 séances sur
+356** : le nom de champ n'est pas unique par patient, donc la référence était le
+maximum tous patients confondus, et presque tout paraissait incomplet.
+
+L'état machine a rendu cette heuristique inutile.
 
 ---
 
