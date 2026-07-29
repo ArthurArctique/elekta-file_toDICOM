@@ -1,7 +1,10 @@
 # Où on en est : séparer les séances, lier les points de contrôle
 
 Synthèse destinée à être critiquée. Chaque affirmation porte son niveau de
-preuve. Le détail des mesures est dans [RESULTATS_RECHERCHE.md](RESULTATS_RECHERCHE.md),
+preuve.
+
+> 📌 Pour l'essentiel à ne pas re-découvrir — pièges, chiffres, erreurs
+> commises — voir **[MEMOIRE.md](MEMOIRE.md)**. Le détail des mesures est dans [RESULTATS_RECHERCHE.md](RESULTATS_RECHERCHE.md),
 le format des fichiers dans [COMPRENDRE_LES_FICHIERS.md](COMPRENDRE_LES_FICHIERS.md).
 
 ---

@@ -3,6 +3,9 @@
 Réponses au [plan de recherche](PLAN_RECHERCHE.md). Chaque réponse porte un
 **niveau de certitude** et sa **source**.
 
+> 📌 Pour l'essentiel à ne pas re-découvrir — pièges, chiffres, erreurs
+> commises — voir **[MEMOIRE.md](MEMOIRE.md)**.
+
 > 📘 Si la structure interne des deux formats n'est pas familière, commencer par
 > **[COMPRENDRE_LES_FICHIERS.md](COMPRENDRE_LES_FICHIERS.md)** — explication sans
 > prérequis de physique médicale, sur les vrais fichiers.
