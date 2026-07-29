@@ -12,7 +12,13 @@ data/
 __pycache__/
 *.pyc
 
-# Rapports produits par organiser_trf.py (identifiants de champ)
+# Rapports et extractions produits par organiser_trf.py
+# (identifiants de champ de traitement : a garder hors du depot)
 rapport/
+seances/
 fichiers.csv
 seances.csv
+illisibles.csv
+
+# Plans exportes depuis Mosaiq
+*.rtp

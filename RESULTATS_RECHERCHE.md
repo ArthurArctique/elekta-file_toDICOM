@@ -151,6 +151,13 @@ Les frontières tombent **exactement** sur les cumuls du plan
 > **À revérifier sur vos propres données** : rien ne garantit que cette
 > convention soit la même sur toutes les versions d'encodage ou toutes les
 > configurations.
+>
+> ✏️ **Précision apportée par les données réelles** : ce compteur est global
+> **à l'intérieur d'un fichier** — il court sur tous les faisceaux d'une même
+> séance — mais il **repart à 1 dans chaque fichier**, exactement comme celui
+> des MU. Sur une séance interrompue, il faut donc sommer les fragments et non
+> prendre le maximum. Mesuré : 11 + 11 + 78 + 13 = 113 pour un plan de 111
+> points, l'excédent venant du recouvrement aux reprises.
 
 **pymedphys ignore complètement cette colonne** — elle est décodée dans la table
 mais `_from_pandas` ne la lit jamais.
