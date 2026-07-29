@@ -113,6 +113,10 @@ def main():
                                 "déjà extraite par --extraire")
     analyseur.add_argument("--tout", action="store_true",
                            help="afficher aussi les séances écartées")
+    analyseur.add_argument("--detail", action="store_true",
+                           help="détailler les critères de chaque séance retenue")
+    analyseur.add_argument("--methode", action="store_true",
+                           help="expliquer d'abord sur quoi porte la comparaison")
     analyseur.add_argument("--ecart-max", type=float, default=1800,
                            help="pour le découpage en séances (défaut : 1800 s)")
     analyseur.add_argument("--seuil-complet", type=float, default=0.97,
@@ -124,6 +128,32 @@ def main():
     cp_plan = sum(len(f["points_de_controle"]) for f in plan["faisceaux"])
     noms = sorted({f.get("nom", "") for f in plan["faisceaux"] if f.get("nom")})
     sites = sorted({f.get("site", "") for f in plan["faisceaux"] if f.get("site")})
+
+    if args.methode:
+        print("""
+  COMMENT LA RECHERCHE PROCÈDE
+  ────────────────────────────
+  Chaque séance est confrontée au plan sur huit critères, de poids inégal.
+
+    DÉCISIFS — un désaccord suffit à écarter la séance
+      Machine          numéro de série du log contre nom du plan. Neutralisé
+                       si les deux nommages ne se recoupent jamais.
+      MU totales       tolérance de 1 %. Mesuré : les vrais appariements
+                       tombent à 0,1 % ou moins.
+      Dessin du champ  les 160 lames confrontées en cinq points de la
+                       délivrance, sur l'axe des MU cumulées. Mesuré : 0,4 mm
+                       entre un plan et sa séance, 13,8 mm face à un autre
+                       traitement. Les quatre conventions d'ordre des bancs et
+                       de numérotation sont essayées, la meilleure retenue.
+
+    FORTS ET MOYENS — un désaccord met en réserve, sans écarter
+      Points de contrôle   un écart de 1 est attendu : le compteur machine
+                           démarre à 1, le plan à 0.
+      Faisceaux, collimateur, étendue du bras
+
+    INDICATIF — n'écarte jamais
+      Nom de champ     Monaco et le log ne suivent pas la même convention.
+""")
 
     print(f"\n  PLAN  {Path(args.rtp).name}")
     print(f"        {len(plan['faisceaux'])} faisceau(x) · {mu_plan:.1f} MU · "
@@ -233,8 +263,37 @@ def main():
                   f"{len(s_['fichiers']):>5} {s_['mu']:>9.1f} "
                   f"{s_['mu'] - mu_plan:>+8.1f} {lames:>8}  {marque}")
 
+        if args.detail:
+            for r in retenus:
+                s_ = r["seance"]
+                print(f"\n    ── {s_['debut_local'][:16]} "
+                      f"{'─' * 46}")
+                for c in r["criteres"]:
+                    poids = {"decisif": "décisif", "fort": "fort",
+                             "moyen": "moyen", "indicatif": "indicatif"}[c.poids]
+                    print(f"       {c.verdict} {c.nom:<20} {str(c.plan)[:22]:<24} "
+                          f"{str(c.log)[:22]:<24} ({poids})")
+                    if c.note:
+                        print(f"         → {c.note}")
+
         dates = sorted({r["seance"]["debut_local"][:10] for r in retenus})
         print(f"\n    du {dates[0]} au {dates[-1]} · {len(dates)} jour(s) distinct(s)")
+
+        # Le rythme est un indice à part entière : des fractions quotidiennes
+        # s'espacent d'un jour, avec un saut de deux ou trois au week-end.
+        if len(dates) > 1:
+            from datetime import date as _date
+            jours = [_date.fromisoformat(d) for d in dates]
+            ecarts = [(b - a).days for a, b in zip(jours, jours[1:])]
+            weekends = sum(1 for a, e in zip(jours, ecarts)
+                           if e > 1 and a.weekday() >= 4)
+            libelle = ", ".join(f"{e} j" for e in ecarts)
+            print(f"    rythme : {libelle}")
+            if all(e <= 4 for e in ecarts) and weekends == sum(
+                1 for e in ecarts if e > 1
+            ):
+                print("    → espacement quotidien, les sauts tombent sur les "
+                      "week-ends : fractionnement classique")
         multi = [r for r in retenus if len(r["seance"]["fichiers"]) > 1]
         if multi:
             print(f"    dont {len(multi)} séance(s) interrompue(s) puis reprise(s)")
