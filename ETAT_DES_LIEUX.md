@@ -306,8 +306,31 @@ Correspondance des étiquettes, d'après la documentation de pymedphys :
 > on using multiple beams with one logfile ending in "Terminated Fault" »*.
 > C'est précisément la règle mise en œuvre ici pour découper les séances.
 
-**Ce qu'il faut demander** : un compte en lecture seule sur la base Mosaiq.
-Pas un export, pas une licence — un accès SQL.
+⚠️ **Voie fermée pour l'instant** : l'accès à la base Mosaiq n'est pas
+disponible. La requête reste consignée pour le jour où il le serait, mais elle
+ne débloque rien aujourd'hui. Et l'objection est juste : ce qu'elle irait
+chercher — nom du site, MU prévues — est la même information que porteraient
+les tags DICOM, puisque Mosaiq la tient de l'import du plan.
+
+### Ce qui, en attendant, est déjà là
+
+**Le nom de champ est dans l'en-tête du TRF**, et c'est de lui que le nom du
+fichier est fabriqué. Vérifié : reconstruire le nom depuis le seul en-tête donne
+un résultat identique au caractère près.
+
+```
+20_04_28 21_53_39 Z 1-1_VMAT.trf
+└─ date UTC ──────┘ └ label ┘└ nom du champ ┘
+```
+
+Ce nom de champ est la « Description » du champ dans Monaco. Quand la convention
+du service y fait figurer la dénomination du traitement, **le lien cherché est
+déjà dans le log** — colonne `champ_nom` de `fichiers.csv` et `seances.csv`, et
+récapitulatif par traitement en fin d'exécution.
+
+⚠️ Il ne relie pas à un *patient* — seulement à un intitulé de traitement. Et
+`field_label` s'est révélé non fiable : il valait `1-2` dans deux fichiers de
+contenus différents.
 
 ---
 
@@ -315,7 +338,7 @@ Pas un export, pas une licence — un accès SQL.
 
 | Il faut | Pour |
 |---|---|
-| **Un accès SQL en lecture à Mosaiq** | Relie les séances aux dossiers, donne le nom du site et les MU prévues, et valide le découpage par recoupement (§4 bis) |
+| *(bloqué)* Un accès SQL en lecture à Mosaiq | Relierait les séances aux dossiers et validerait le découpage par recoupement. Non disponible (§4 bis) |
 | **Un RT Plan** apparié à une des séances déjà découpées | Pour la comparaison géométrique au niveau des points de contrôle. Un `.rtp` exporté à la main suffit à valider la méthode, mais pas à industrialiser |
 | Fixer les **seuils d'acceptation** | Définir ce qui est conforme (repère externe : ±0,2 mm dans la littérature) |
 | *(sans objet)* Licence TRF, version d'encodage 4 | Réglés par le premier lot : les fichiers arrivent, et ils sont en v3 |

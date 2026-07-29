@@ -688,6 +688,32 @@ def main():
     print(f"  séances en plusieurs fichiers : {len(multi)}")
     print(f"  séances à vérifier           : {len(doutes)}")
 
+    # Ce que le parc a traite dans la semaine. Le nom de champ vient de
+    # l'en-tete du TRF : c'est aussi ce qui apparait dans le nom du fichier,
+    # et souvent la denomination du traitement telle que le service la donne.
+    traitements = {}
+    for s_ in seances:
+        if s_.get("issue") == "sans_dose":
+            continue
+        cle = (s_["machine"], s_["champ_nom"])
+        entree = traitements.setdefault(cle, {"seances": 0, "mu": 0.0, "jours": set()})
+        entree["seances"] += 1
+        entree["mu"] += s_["mu_cumul"]
+        entree["jours"].add(s_["debut_local"][:10])
+    if traitements:
+        print(f"\n{'-' * 62}")
+        print("Traitements delivres, d'apres le nom de champ")
+        print(f"{'-' * 62}")
+        print(f"  {'machine':<8} {'champ':<28} {'seances':>8} {'jours':>6} {'MU/seance':>10}")
+        for (machine, champ), e in sorted(
+            traitements.items(), key=lambda x: -x[1]["seances"]
+        )[:25]:
+            moyenne = e["mu"] / e["seances"] if e["seances"] else 0
+            print(f"  {machine:<8} {champ[:27]:<28} {e['seances']:>8} "
+                  f"{len(e['jours']):>6} {moyenne:>10.1f}")
+        if len(traitements) > 25:
+            print(f"  … et {len(traitements) - 25} autres")
+
     versions = {}
     for r in resumes:
         versions[r["version"]] = versions.get(r["version"], 0) + 1
