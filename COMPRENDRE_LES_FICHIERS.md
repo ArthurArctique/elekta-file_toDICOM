@@ -36,6 +36,27 @@ délivrée.
 > pourquoi tout notre travail d'alignement se fait sur l'axe des **MU cumulées**,
 > jamais sur le temps.
 
+### Ce que la machine compte vraiment
+
+Dans la tête de l'accélérateur, après la cible, le faisceau traverse une
+**chambre d'ionisation de transmission** — deux électrodes entre lesquelles le
+rayonnement arrache des charges. Le courant recueilli est proportionnel au
+rayonnement émis, et la machine l'intègre. C'est ce compteur qu'on appelle
+l'unité moniteur.
+
+Deux conséquences :
+
+**La MU n'est pas une unité physique universelle**, c'est une grandeur
+d'étalonnage. Chaque accélérateur est réglé pour qu'une MU corresponde à une
+dose donnée dans des conditions de référence — typiquement 1 cGy, la référence
+exacte variant selon les conventions du service. Vérifier cet étalonnage est
+d'ailleurs un contrôle qualité en soi.
+
+**La machine s'arrête sur ce compteur, pas sur un chronomètre.** Elle délivre
+jusqu'à atteindre le nombre de MU demandé. Si le débit faiblit, la séance dure
+plus longtemps ; la dose, elle, ne change pas. C'est aussi pour ça qu'une
+délivrance interrompue reprend là où le compteur s'était arrêté.
+
 ### Le point de contrôle
 
 Un plan de traitement est une liste d'**étapes intermédiaires**, appelées points
@@ -318,6 +339,61 @@ Cela donne, gratuitement et sans le moindre calage temporel, une comparaison
 du **système de contrôle de la machine**, pas celle du logiciel de planification.
 Elle vérifie que la machine a fait ce qu'on lui a demandé, pas que ce qu'on lui
 a demandé correspondait au plan.
+
+---
+
+## Partie 2 bis — Les MU du plan et celles du log ne coïncident jamais tout à fait
+
+Le plan annonce ce qu'il faut délivrer, le log enregistre ce qui l'a été. Quatre
+causes les séparent, d'ampleur très différente. Mesures faites sur le couple
+VMAT de référence, dont le plan annonce **426,710052 MU**.
+
+### 1. La résolution du format — 0,1 MU
+
+Le compteur du TRF est un entier divisé par dix. Son plus petit incrément non
+nul mesuré est de **0,10 MU** : il ne peut pas faire mieux. Une séance complète
+relève 426,6 contre 426,710052 au plan, soit **−0,1 MU**. C'est le plancher, et
+c'est irréductible.
+
+### 2. Le cumul sur plusieurs faisceaux — 0,1 MU par frontière
+
+Le compteur repart à zéro à chaque faisceau, et la dernière incrémentation n'est
+pas enregistrée avant la remise à zéro. Un fichier de 9 faisceaux perd donc
+**−0,2 MU** au total. L'écart attendu croît avec le nombre de faisceaux, ce qui
+interdit d'appliquer une tolérance fixe.
+
+### 3. Les reprises après interruption — 0,1 MU par raccord
+
+La séance interrompue trois fois totalise 426,4 MU, soit **−0,3 MU**. Chaque
+raccord coûte environ un pas de quantification.
+
+### 4. Une délivrance réellement incomplète — de quelques MU à tout
+
+C'est le seul écart qui ait un sens clinique. Un fragment isolé de la séance
+ci-dessus affiche 26,5 MU contre 426,7 au plan : **−400 MU**. Ce n'est pas une
+erreur de mesure, c'est un traitement qui s'est arrêté.
+
+| Cause | Ampleur mesurée | Sens |
+|---|---|---|
+| Résolution du format | −0,1 MU | artefact |
+| Frontière de faisceau | −0,1 MU par faisceau | artefact |
+| Raccord de reprise | −0,1 MU par raccord | artefact |
+| Délivrance incomplète | jusqu'à tout | **réel** |
+
+**Le log lit donc systématiquement un peu bas**, jamais haut. Un écart positif
+serait suspect.
+
+### Et « les MU du plan » sont elles-mêmes ambiguës
+
+Un plan peut porter plusieurs prescriptions. Sur notre second jeu de test :
+
+| Groupe de fractions | Total |
+|---|---|
+| 1 | 436,7 MU |
+| 2 | 475,6 MU |
+
+Le log correspondait au **groupe 2**. Comparer sans préciser le groupe n'a donc
+pas de sens — c'est exactement ce que fait le paramètre `fraction_group_number`.
 
 ---
 
