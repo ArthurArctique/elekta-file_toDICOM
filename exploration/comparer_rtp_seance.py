@@ -57,9 +57,8 @@ class Critere:
         self.verdict, self.note, self.poids = verdict, note, poids
 
 
-def _lames_brutes(chemin):
-    """MU cumulées et positions des 160 lames d'un fichier."""
-    octets = Path(chemin).read_bytes()
+def _lames_brutes(octets):
+    """MU cumulées et positions des 160 lames d'un fichier, depuis ses octets."""
     entete = lire_entete(octets)
     v = VERSIONS[entete["version"]]
     taille = v["echelle"] * entete["nb_colonnes"] * 2 + v["prefixe"]
@@ -90,7 +89,7 @@ def _lames_brutes(chemin):
     return mu, np.array(bancs)                # (2, 80, n_lignes)
 
 
-def lames_du_log(chemins, fractions):
+def lames_du_log(sources, fractions):
     """Positions des 160 lames du log, aux fractions de MU demandées.
 
     Le compteur de MU sert d'axe : c'est le seul commun au plan et au log.
@@ -99,11 +98,24 @@ def lames_du_log(chemins, fractions):
     échantillonne le début de l'arc en croyant en parcourir la totalité.
     """
     morceaux, decalage = [], 0.0
-    for chemin in sorted(chemins):
-        lu = _lames_brutes(chemin)
+    for octets in sources:
+        lu = _lames_brutes(octets)
         if lu is None:
             continue
         mu, bancs = lu
+        # Le compteur repart de zéro à chaque faisceau, y compris à
+        # l'intérieur d'un même fichier : on le rend continu avant de sonder.
+        saut = np.where(np.diff(mu) < -max(0.5, 0.01 * mu.max()))[0]
+        if len(saut):
+            continu = mu.copy()
+            report = 0.0
+            precedent = 0
+            for i in saut:
+                continu[precedent:i + 1] += report
+                report += float(mu[i])
+                precedent = i + 1
+            continu[precedent:] += report
+            mu = continu
         morceaux.append((mu + decalage, bancs))
         decalage += float(mu.max())
     if not morceaux:
@@ -122,19 +134,35 @@ def lames_du_log(chemins, fractions):
 
 
 def lames_du_plan(plan, fractions):
-    """Positions de lames du plan, aux mêmes fractions de MU cumulées."""
-    faisceau = max(plan["faisceaux"], key=lambda f: f.get("mu") or 0)
-    points = faisceau["points_de_controle"]
-    mus = np.array([p["mu"] if p["mu"] is not None else 0.0 for p in points])
-    if mus.max() <= 0:
-        return None
+    """Positions de lames du plan, aux mêmes fractions de MU cumulées.
 
-    a = np.array([[v if v is not None else np.nan for v in p["lames_a"][:NB_PAIRES]]
-                  for p in points])           # (n_cp, 80)
-    b = np.array([[v if v is not None else np.nan for v in p["lames_b"][:NB_PAIRES]]
-                  for p in points])
-    if np.isnan(a).all() or np.isnan(b).all():
+    Un plan à plusieurs faisceaux se parcourt comme la machine les délivre :
+    l'un après l'autre, sur un axe de MU cumulé d'un bout à l'autre. Ne
+    regarder qu'un faisceau reviendrait à comparer le premier arc du plan à
+    un mélange de tous ceux du log.
+    """
+    axes, gauches, droites, decalage = [], [], [], 0.0
+    for faisceau in plan["faisceaux"]:
+        points = faisceau["points_de_controle"]
+        mus = np.array([p["mu"] if p["mu"] is not None else 0.0 for p in points])
+        if mus.max() <= 0:
+            continue
+        a = np.array([[v if v is not None else np.nan
+                       for v in p["lames_a"][:NB_PAIRES]] for p in points])
+        b = np.array([[v if v is not None else np.nan
+                       for v in p["lames_b"][:NB_PAIRES]] for p in points])
+        if np.isnan(a).all() or np.isnan(b).all():
+            continue
+        axes.append(mus + decalage)
+        gauches.append(a)
+        droites.append(b)
+        decalage += float(mus.max())
+
+    if not axes:
         return None
+    mus = np.concatenate(axes)
+    a = np.concatenate(gauches, axis=0)
+    b = np.concatenate(droites, axis=0)
 
     # Le RTP travaille en centimètres, le log en millimètres.
     ampleur = np.nanmax(np.abs(np.concatenate([a, b])))
@@ -169,19 +197,29 @@ def accorder_lames(plan_lames, log_lames):
     return meilleur, description
 
 
-def lire_seance(chemins):
-    """Résume les fichiers d'une séance, comme le fait l'inventaire."""
-    fichiers = []
-    for chemin in chemins:
-        octets = Path(chemin).read_bytes()
+def lire_seance(sources):
+    """Résume les fichiers d'une séance.
+
+    `sources` accepte des chemins ou des couples (nom, octets), ce qui permet
+    de travailler aussi bien sur disque que directement dans une archive.
+    """
+    fichiers, contenus = [], []
+    for source in sources:
+        if isinstance(source, tuple):
+            nom, octets = source
+        else:
+            nom, octets = Path(source).name, Path(source).read_bytes()
         try:
-            fichiers.append(resumer_trf(octets, Path(chemin).name))
+            fichiers.append(resumer_trf(octets, nom))
+            contenus.append(octets)
         except TrfIllisible as erreur:
-            print(f"  ⚠ {Path(chemin).name} illisible : {erreur}", file=sys.stderr)
+            print(f"  ⚠ {nom} illisible : {erreur}", file=sys.stderr)
     if not fichiers:
         raise SystemExit("Aucun fichier de log exploitable.")
 
-    fichiers.sort(key=lambda f: f["debut_utc"])
+    ordre = sorted(range(len(fichiers)), key=lambda i: fichiers[i]["debut_utc"])
+    fichiers = [fichiers[i] for i in ordre]
+    contenus = [contenus[i] for i in ordre]
     gantry = [f[cle] for f in fichiers for cle in ("gantry_min", "gantry_max")
               if f.get(cle) is not None]
     # Le compteur de points de controle repart a 1 dans chaque fichier, comme
@@ -202,7 +240,7 @@ def lire_seance(chemins):
         "debut_local": fichiers[0]["debut_local"],
         "fin_local": fichiers[-1]["fin_local"],
         "interrompue": len(fichiers) > 1,
-        "chemins": [str(c) for c in chemins],
+        "octets": contenus,
     }
 
 
@@ -327,7 +365,7 @@ def comparer(plan, seance):
 def enrichir(plan, seance):
     """Ajoute à la séance ce qui demande de relire les colonnes de lames."""
     try:
-        log = lames_du_log(seance["chemins"], SONDAGES)
+        log = lames_du_log(seance["octets"], SONDAGES)
     except Exception:
         log = None
     attendu = lames_du_plan(plan, SONDAGES)

@@ -28,18 +28,56 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from comparer_rtp_seance import NON, OK, comparer, enrichir, lire_seance  # noqa: E402
 from lire_rtp import extraire as lire_rtp  # noqa: E402
+from organiser_trf import TrfIllisible, parcourir, regrouper  # noqa: E402
+from organiser_trf import resumer as resumer_trf  # noqa: E402
 
 
-def rassembler(racine):
-    """Groupe les .trf par dossier : un dossier, une séance."""
-    racine = Path(racine)
-    if racine.is_file():
-        return {racine.parent: [racine]}
+def rassembler(source, ecart_max, seuil_complet):
+    """Constitue les séances à examiner.
 
-    par_dossier = defaultdict(list)
-    for chemin in sorted(racine.rglob("*.trf")):
-        par_dossier[chemin.parent].append(chemin)
-    return dict(par_dossier)
+    Deux façons de faire, selon ce qu'on lui donne :
+
+    - une archive SDD ou un dossier de `.trf` en vrac : le découpage en séances
+      est refait par `organiser_trf`, avec toute sa logique — état final de la
+      machine, enregistrements sans dose, fragments transparents au chaînage.
+      C'est la voie à préférer, elle ne dépend d'aucune extraction préalable.
+
+    - une arborescence déjà extraite : un dossier vaut une séance.
+    """
+    chemin = Path(source)
+    deja_extrait = (
+        chemin.is_dir()
+        and not any(chemin.glob("*.trf"))
+        and any(chemin.rglob("*.trf"))
+    )
+
+    if deja_extrait:
+        par_dossier = defaultdict(list)
+        for fichier in sorted(chemin.rglob("*.trf")):
+            par_dossier[fichier.parent].append(fichier)
+        return [(dossier.name, fichiers) for dossier, fichiers in par_dossier.items()], False
+
+    resumes, contenus = [], {}
+    for nom, origine, octets in parcourir([source]):
+        try:
+            resume = resumer_trf(octets, nom)
+        except (TrfIllisible, Exception):
+            continue
+        resumes.append(resume)
+        contenus[nom] = octets
+    if not resumes:
+        return [], True
+
+    seances = regrouper(resumes, ecart_max, seuil_complet)
+    groupes = []
+    for s_ in seances:
+        if s_.get("issue") == "sans_dose":
+            continue
+        sources = [(nom, contenus[nom]) for nom in s_["fichiers"].split(" | ")
+                   if nom in contenus]
+        if sources:
+            groupes.append((f"séance {s_['seance']}", sources))
+    return groupes, True
 
 
 def juger(criteres):
@@ -70,9 +108,15 @@ def main():
         description="Retrouve les séances correspondant à un plan RTP.",
     )
     analyseur.add_argument("rtp", help="plan exporté depuis Mosaiq (.rtp)")
-    analyseur.add_argument("racine", help="dossier des séances (ou un .trf isolé)")
+    analyseur.add_argument("source",
+                           help="archive SDD, dossier de .trf, ou arborescence "
+                                "déjà extraite par --extraire")
     analyseur.add_argument("--tout", action="store_true",
                            help="afficher aussi les séances écartées")
+    analyseur.add_argument("--ecart-max", type=float, default=1800,
+                           help="pour le découpage en séances (défaut : 1800 s)")
+    analyseur.add_argument("--seuil-complet", type=float, default=0.97,
+                           help="pour le découpage en séances (défaut : 0.97)")
     args = analyseur.parse_args()
 
     plan = lire_rtp(args.rtp)
@@ -89,15 +133,16 @@ def main():
     if sites:
         print(f"        site     : {', '.join(sites)}")
 
-    dossiers = rassembler(args.racine)
-    if not dossiers:
-        raise SystemExit(f"Aucun fichier .trf sous {args.racine}")
-    print(f"\n  {len(dossiers)} séance(s) à examiner sous {args.racine}\n")
+    groupes, decoupe = rassembler(args.source, args.ecart_max, args.seuil_complet)
+    if not groupes:
+        raise SystemExit(f"Aucun fichier .trf exploitable dans {args.source}")
+    provenance = ("découpées à la volée" if decoupe else "déjà extraites")
+    print(f"\n  {len(groupes)} séance(s) à examiner ({provenance}) — {args.source}\n")
 
     seances = []
-    for dossier, fichiers in dossiers.items():
+    for etiquette, sources in groupes:
         try:
-            seances.append((dossier, lire_seance([str(f) for f in fichiers])))
+            seances.append((etiquette, lire_seance(sources)))
         except SystemExit:
             continue
 
@@ -115,7 +160,7 @@ def main():
               "trancher.\n")
 
     resultats = []
-    for dossier, seance in seances:
+    for etiquette, seance in seances:
         enrichir(plan, seance)          # confronte le dessin du champ
         criteres = comparer(plan, seance)
         if machine_incomparable:
@@ -125,7 +170,7 @@ def main():
                     c.note = "nommages différents — critère neutralisé"
         verdict, score, ecart = juger(criteres)
         resultats.append({
-            "dossier": dossier, "seance": seance, "criteres": criteres,
+            "etiquette": etiquette, "seance": seance, "criteres": criteres,
             "verdict": verdict, "score": score, "ecart": ecart,
         })
 
