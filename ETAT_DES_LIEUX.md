@@ -278,11 +278,45 @@ Structurel, donc élucidable, mais non élucidé.
 
 ---
 
+## 4 bis. Lier une séance à un dossier : ça ne passe pas par le RT Plan
+
+Le TRF ne contient **ni nom de plan, ni identifiant patient**. Seulement un
+numéro de machine, un horodatage UTC et deux étiquettes de champ. Aucun fichier
+DICOM ni RTP ne changera ça : le lien vers le dossier est **dans Mosaiq**.
+
+C'est d'ailleurs ce que fait pymedphys, qui interroge la base SQL pour
+identifier ses logs. La requête est reprise et documentée dans
+[`exploration/mosaiq_lier_seances.sql`](exploration/mosaiq_lier_seances.sql) —
+en lecture seule, à partir de (machine, fenêtre horaire locale).
+
+Elle rend le **nom du site de traitement** (`Site.Site_Name`), l'identité du
+dossier, et surtout deux colonnes précieuses :
+
+| Colonne | Ce qu'elle apporte |
+|---|---|
+| `TxField.Meterset` | Le total de MU prévu pour ce champ — l'équivalent du `BeamMeterset` d'un RT Plan. Il rend inutile l'estimation par champ d'`organiser_trf.py` |
+| `TrackTreatment.WasBeamComplete` | **Le contrôle croisé qui manquait.** Le log dit « Terminated Ok » ou « Terminated Fault », Mosaiq dit vrai ou faux, et les deux sources sont indépendantes |
+
+Correspondance des étiquettes, d'après la documentation de pymedphys :
+`TxField.Field_Label` est le « Field ID » de Monaco, `TxField.Field_Name` sa
+« Description ». Ce sont exactement les deux valeurs de l'en-tête du TRF.
+
+> Note : le code de pymedphys porte en commentaire le TODO
+> *« search for previous treatments that were incomplete … can solve this later
+> on using multiple beams with one logfile ending in "Terminated Fault" »*.
+> C'est précisément la règle mise en œuvre ici pour découper les séances.
+
+**Ce qu'il faut demander** : un compte en lecture seule sur la base Mosaiq.
+Pas un export, pas une licence — un accès SQL.
+
+---
+
 ## 5. Ce qui manque pour avancer
 
 | Il faut | Pour |
 |---|---|
-| **Un RT Plan** apparié à une des séances déjà découpées | Le seul verrou restant. Il permet de vérifier le décalage d'indice sur vos données et de produire la première comparaison réelle |
+| **Un accès SQL en lecture à Mosaiq** | Relie les séances aux dossiers, donne le nom du site et les MU prévues, et valide le découpage par recoupement (§4 bis) |
+| **Un RT Plan** apparié à une des séances déjà découpées | Pour la comparaison géométrique au niveau des points de contrôle. Un `.rtp` exporté à la main suffit à valider la méthode, mais pas à industrialiser |
 | Fixer les **seuils d'acceptation** | Définir ce qui est conforme (repère externe : ±0,2 mm dans la littérature) |
 | *(sans objet)* Licence TRF, version d'encodage 4 | Réglés par le premier lot : les fichiers arrivent, et ils sont en v3 |
 
