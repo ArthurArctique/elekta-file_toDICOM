@@ -284,10 +284,26 @@ def resumer(octets, nom_fichier, origine=("fichier", "", "")):
         resume["ecart_mu_entete"] = None
         resume["mu_incoherent"] = False
 
+    # La date de l'en-tete est en UTC (le « Z » final le dit) et le decalage
+    # local est porte separement. Mosaiq affiche l'heure locale : sans cette
+    # conversion, aucune seance n'est retrouvable.
     fin = datetime.datetime.strptime(entete["date"], "%y/%m/%d %H:%M:%S Z")
     debut = fin - datetime.timedelta(seconds=resume["duree_s"])
     resume["debut_utc"] = debut.replace(microsecond=0).isoformat(sep=" ")
     resume["fin_utc"] = fin.isoformat(sep=" ")
+
+    decalage = datetime.timedelta(0)
+    fuseau = entete["fuseau"]
+    if len(fuseau) >= 6 and fuseau[0] in "+-":
+        try:
+            decalage = (1 if fuseau[0] == "+" else -1) * datetime.timedelta(
+                hours=int(fuseau[1:3]), minutes=int(fuseau[4:6])
+            )
+        except ValueError:
+            pass
+    resume["decalage"] = fuseau
+    resume["debut_local"] = (debut + decalage).replace(microsecond=0).isoformat(sep=" ")
+    resume["fin_local"] = (fin + decalage).isoformat(sep=" ")
 
     return resume
 
@@ -469,6 +485,7 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
                 "seance": len(seances) + 1, "machine": r["machine"],
                 "champ_nom": r["champ_nom"], "champ_etiquette": r["champ_etiquette"],
                 "debut_utc": r["debut_utc"], "fin_utc": r["fin_utc"],
+                "debut_local": r["debut_local"], "fin_local": r["fin_local"],
                 "fichiers": [r["fichier"]], "nb_fichiers": 1,
                 "mu_cumul": r.get("mu") or 0.0, "mu_reference": round(total_attendu, 1),
                 "issue": "sans_dose", "etat_final": r.get("etat_final"),
@@ -507,6 +524,8 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
                 "champ_etiquette": r["champ_etiquette"],
                 "debut_utc": r["debut_utc"],
                 "fin_utc": r["fin_utc"],
+                "debut_local": r["debut_local"],
+                "fin_local": r["fin_local"],
                 "fichiers": [r["fichier"]],
                 "nb_fichiers": 1,
                 "mu_cumul": r.get("mu") or 0.0,
@@ -523,6 +542,7 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
             courante["nb_fichiers"] += 1
             courante["mu_cumul"] += r.get("mu") or 0.0
             courante["fin_utc"] = r["fin_utc"]
+            courante["fin_local"] = r["fin_local"]
             courante["issue"] = r.get("issue")
             courante["etat_final"] = r.get("etat_final")
 
@@ -634,7 +654,8 @@ def main():
     sortie.mkdir(parents=True, exist_ok=True)
     cols_fichiers = [
         "seance", "fichier", "machine", "version", "champ_etiquette", "champ_nom",
-        "debut_utc", "fin_utc", "duree_s", "echantillons", "mu", "mu_entete",
+        "debut_local", "fin_local", "decalage", "debut_utc", "fin_utc",
+        "duree_s", "echantillons", "mu", "mu_entete",
         "place_dans_seance", "delivrance", "mu_corps", "entete_sans_mu", "ecart_mu_entete",
         "mu_incoherent", "faisceaux",
         "mu_max_faisceau", "mu_brut_min", "mu_brut_max", "part_irradiation",
@@ -644,7 +665,8 @@ def main():
         "octets_par_ligne", "reste_octets", "fuseau",
     ]
     cols_seances = [
-        "seance", "machine", "champ_etiquette", "champ_nom", "debut_utc", "fin_utc",
+        "seance", "machine", "champ_etiquette", "champ_nom",
+        "debut_local", "fin_local", "debut_utc", "fin_utc",
         "nb_fichiers", "mu_cumul", "mu_reference", "completude", "etat_final",
         "issue", "ouverture", "doute", "fichiers",
     ]

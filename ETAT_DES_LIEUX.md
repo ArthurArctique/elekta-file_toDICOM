@@ -190,6 +190,27 @@ concerne pas.
 utilisées dans tout ce document. Rien n'est extrapolé hors du domaine vérifié, et
 la branche v4 — jamais testable faute de fichier — ne vous concerne pas non plus.
 
+### 🔴 Les horodatages sont en UTC, pas en heure locale
+
+La date de l'en-tête — celle qui donne son nom au fichier — porte un `Z` final :
+c'est de l'**UTC**. Le décalage local est inscrit séparément dans l'en-tête.
+Mosaiq, lui, affiche l'heure locale.
+
+Sans la conversion, aucune séance n'est retrouvable dans le dossier patient :
+une délivrance de 8 h du matin apparaît à 6 h dans le nom du fichier, et peut
+même tomber la veille.
+
+Vérifié sur les données de référence : le fichier `20_04_28 21_53_39 Z` a été
+indexé par pymedphys sous `2020-04-29_075339` — 07:53 le **29** en local, contre
+21:53 le **28** en UTC.
+
+`fichiers.csv` et `seances.csv` portent désormais `debut_local` et `fin_local`
+en tête, avec le décalage relevé dans chaque fichier. **Ce sont ces colonnes
+qu'il faut confronter à Mosaiq.**
+
+Rappel utile pour la recherche : cette date marque la **fin** de la délivrance,
+pas son début.
+
 ### Une anomalie non élucidée, sans conséquence pratique
 
 **62 fichiers portent un en-tête dont le total de MU vaut zéro**, dont **57
