@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from comparer_rtp_seance import NON, OK, comparer, lire_seance  # noqa: E402
+from comparer_rtp_seance import NON, OK, comparer, enrichir, lire_seance  # noqa: E402
 from lire_rtp import extraire as lire_rtp  # noqa: E402
 
 
@@ -116,6 +116,7 @@ def main():
 
     resultats = []
     for dossier, seance in seances:
+        enrichir(plan, seance)          # confronte le dessin du champ
         criteres = comparer(plan, seance)
         if machine_incomparable:
             for c in criteres:
@@ -175,15 +176,17 @@ def main():
     else:
         print(f"  {OK} {len(retenus)} séance(s) correspondent — "
               f"vraisemblablement autant de fractions.\n")
-        print(f"    {'date (locale)':<18} {'champ':<20} {'fich.':>5} {'MU':>9} "
-              f"{'écart':>8}  ")
-        print(f"    {'-' * 68}")
+        print(f"    {'date (locale)':<18} {'champ':<18} {'fich.':>5} {'MU':>9} "
+              f"{'écart':>8} {'lames':>8}  ")
+        print(f"    {'-' * 76}")
         for r in retenus:
             s_ = r["seance"]
             marque = OK if r["verdict"] == "correspond" else "⚠️ "
-            print(f"    {s_['debut_local'][:16]:<18} {s_['champ_nom'][:19]:<20} "
+            lames = (f"{s_['lames_ecart']:.1f} mm"
+                     if s_.get("lames_ecart") is not None else "—")
+            print(f"    {s_['debut_local'][:16]:<18} {s_['champ_nom'][:17]:<18} "
                   f"{len(s_['fichiers']):>5} {s_['mu']:>9.1f} "
-                  f"{s_['mu'] - mu_plan:>+8.1f}  {marque}")
+                  f"{s_['mu'] - mu_plan:>+8.1f} {lames:>8}  {marque}")
 
         dates = sorted({r["seance"]["debut_local"][:10] for r in retenus})
         print(f"\n    du {dates[0]} au {dates[-1]} · {len(dates)} jour(s) distinct(s)")
@@ -208,8 +211,9 @@ def main():
             if len(ecartes) > 20:
                 print(f"    … et {len(ecartes) - 20} autres")
 
-    print("\n  Cette recherche établit une identité de traitement, pas une "
-          "conformité de\n  délivrance : aucune position de lame n'est comparée.")
+    print("\n  Le dessin du champ est le critère le plus sûr : mesuré, il vaut "
+          "moins d'un\n  millimètre entre un plan et sa propre séance, et plus "
+          "de dix face à un\n  autre traitement.")
     return 0
 
 
