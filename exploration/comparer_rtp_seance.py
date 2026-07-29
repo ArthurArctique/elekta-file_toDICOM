@@ -247,16 +247,10 @@ def lire_seance(sources):
 def comparer(plan, seance):
     criteres = []
 
-    # --- machine ---
-    machines = {f.get("machine", "") for f in plan["faisceaux"] if f.get("machine")}
-    machine_plan = ", ".join(sorted(machines)) or "—"
-    concorde = seance["machine"] in machines
-    criteres.append(Critere(
-        "Machine", machine_plan, seance["machine"],
-        OK if concorde else (DOUTE if not machines else NON),
-        "" if concorde else "le plan ne désigne pas cette machine",
-        poids="decisif",
-    ))
+    # La machine n'est pas comparée : le log la désigne par son numéro de série,
+    # le plan par le nom que lui donne le TPS. Deux nommages sans rapport, qui
+    # ne peuvent rien discriminer — et qui, pris pour un critère décisif,
+    # écartaient toutes les séances.
 
     # --- nom de champ ---
     noms = {f.get("nom", "") for f in plan["faisceaux"] if f.get("nom")}

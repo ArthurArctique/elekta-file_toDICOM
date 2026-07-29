@@ -136,8 +136,6 @@ def main():
   Chaque séance est confrontée au plan sur huit critères, de poids inégal.
 
     DÉCISIFS — un désaccord suffit à écarter la séance
-      Machine          numéro de série du log contre nom du plan. Neutralisé
-                       si les deux nommages ne se recoupent jamais.
       MU totales       tolérance de 1 %. Mesuré : les vrais appariements
                        tombent à 0,1 % ou moins.
       Dessin du champ  les 160 lames confrontées en cinq points de la
@@ -153,6 +151,10 @@ def main():
 
     INDICATIF — n'écarte jamais
       Nom de champ     Monaco et le log ne suivent pas la même convention.
+
+    NON COMPARÉ
+      Machine          le log la désigne par son numéro de série, le plan par
+                       le nom du TPS : deux nommages sans rapport.
 """)
 
     print(f"\n  PLAN  {Path(args.rtp).name}")
@@ -176,28 +178,10 @@ def main():
         except SystemExit:
             continue
 
-    # Le TRF nomme la machine par son numero de serie, le plan par le nom que
-    # lui donne le TPS. Si aucune seance ne porte le nom du plan, le critere ne
-    # peut rien discriminer : le neutraliser vaut mieux que tout rejeter.
-    machines_plan = {f.get("machine", "") for f in plan["faisceaux"] if f.get("machine")}
-    machines_log = {s_["machine"] for _, s_ in seances}
-    machine_incomparable = bool(machines_plan) and not (machines_plan & machines_log)
-    if machine_incomparable:
-        print(f"  ⚠️  Le plan désigne la machine « {', '.join(sorted(machines_plan))} », "
-              f"les logs « {', '.join(sorted(machines_log))} ».")
-        print("      Deux nommages différents pour vraisemblablement le même "
-              "appareil : ce critère\n      est neutralisé, il ne peut rien "
-              "trancher.\n")
-
     resultats = []
     for etiquette, seance in seances:
         enrichir(plan, seance)          # confronte le dessin du champ
         criteres = comparer(plan, seance)
-        if machine_incomparable:
-            for c in criteres:
-                if c.nom == "Machine":
-                    c.poids = "indicatif"
-                    c.note = "nommages différents — critère neutralisé"
         verdict, score, ecart = juger(criteres)
         resultats.append({
             "etiquette": etiquette, "seance": seance, "criteres": criteres,
