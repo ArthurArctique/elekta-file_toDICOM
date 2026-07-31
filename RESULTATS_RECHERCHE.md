@@ -1,6 +1,6 @@
 # Résultats de recherche — TRF Elekta → DICOM RT Plan
 
-Réponses au [plan de recherche](PLAN_RECHERCHE.md). Chaque réponse porte un
+Réponses au [plan de recherche initial](archives/PLAN_RECHERCHE.md). Chaque réponse porte un
 **niveau de certitude** et sa **source**.
 
 > 📌 Pour l'essentiel à ne pas re-découvrir — pièges, chiffres, erreurs

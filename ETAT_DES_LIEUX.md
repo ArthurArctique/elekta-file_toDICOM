@@ -3,9 +3,11 @@
 Synthèse destinée à être critiquée. Chaque affirmation porte son niveau de
 preuve.
 
-> 📌 Pour l'essentiel à ne pas re-découvrir — pièges, chiffres, erreurs
-> commises — voir **[MEMOIRE.md](MEMOIRE.md)**. Le détail des mesures est dans [RESULTATS_RECHERCHE.md](RESULTATS_RECHERCHE.md),
-le format des fichiers dans [COMPRENDRE_LES_FICHIERS.md](COMPRENDRE_LES_FICHIERS.md).
+> 📌 Ce document expose le **raisonnement et son niveau de preuve**, pour être
+> discuté. Le bilan et les outils sont dans le [README](README.md), les pièges
+> opérationnels dans [MEMOIRE](MEMOIRE.md), le détail des mesures dans
+> [RESULTATS_RECHERCHE](RESULTATS_RECHERCHE.md), et les formats dans
+> [COMPRENDRE_LES_FICHIERS](COMPRENDRE_LES_FICHIERS.md).
 
 ---
 

@@ -1,3 +1,13 @@
+> ⚠️ **DOCUMENT ARCHIVÉ — conservé pour l'historique, ne pas s'y fier.**
+>
+> C'est le plan de recherche initial, rédigé avant toute mesure. Une bonne part
+> de ses hypothèses se sont révélées fausses et sont annotées comme telles au fil
+> du texte. Il montre d'où l'on est parti, pas où l'on en est.
+>
+> Pour l'état actuel : [README](../README.md) · [MEMOIRE](../MEMOIRE.md)
+
+---
+
 # Plan de recherche — TRF Elekta (Versa HD) → DICOM RT Plan → comparaison des points de contrôle
 
 Branche : `exploration`. Document de cadrage, pas de code.
@@ -5,7 +15,7 @@ Toutes les affirmations « code » ci-dessous viennent de la lecture de
 pymedphys 0.41.0 installé localement, pas de la documentation en ligne.
 
 > 📌 **Ce plan a été exécuté.** Les réponses, avec niveau de certitude et
-> sources, sont dans **[RESULTATS_RECHERCHE.md](RESULTATS_RECHERCHE.md)**.
+> sources, sont dans **[RESULTATS_RECHERCHE.md](../RESULTATS_RECHERCHE.md)**.
 > Plusieurs hypothèses de ce document s'y trouvent corrigées — les passages
 > concernés sont signalés ci-dessous.
 
@@ -57,7 +67,7 @@ asymétrique connu (typiquement un champ où X1 ≠ X2).
 > renommer le dépôt. L'objectif étant bien de **produire un DICOM**, cette
 > recommandation est retirée : `to_dicom` reste sur le chemin critique. Ce qui
 > suit décrit donc des **problèmes à résoudre**, pas des raisons de contourner.
-> Voir [RESULTATS_RECHERCHE.md §1, §3 et §10](RESULTATS_RECHERCHE.md).
+> Voir [RESULTATS_RECHERCHE.md §1, §3 et §10](../RESULTATS_RECHERCHE.md).
 
 `Delivery` est le pivot de pymedphys : un conteneur de 5 séries
 (`monitor_units`, `gantry`, `collimator`, `mlc`, `jaw`) alimentable depuis un TRF
@@ -105,7 +115,7 @@ récupérée.
 > indexe **directement** les points de contrôle du plan — l'appariement est donc
 > natif et exact, contrairement à ce qui est écrit ci-dessous. Reste
 > l'interpolation *à l'intérieur* d'un point de contrôle en delivery dynamique.
-> Voir [RESULTATS_RECHERCHE.md §4 et §6](RESULTATS_RECHERCHE.md).
+> Voir [RESULTATS_RECHERCHE.md §4 et §6](../RESULTATS_RECHERCHE.md).
 
 | | TRF | RT Plan |
 |---|---|---|
@@ -146,7 +156,7 @@ et un excellent premier livrable.
 > ✏️ **Corrigé** : il ne s'agit pas de colonnes `Scaled Expected` (elles
 > n'existent pas) mais de colonnes **`Positional Error`**, avec la relation
 > `Attendu = Actual + Positional Error`. Voir
-> [RESULTATS_RECHERCHE.md §5](RESULTATS_RECHERCHE.md).
+> [RESULTATS_RECHERCHE.md §5](../RESULTATS_RECHERCHE.md).
 
 ---
 
@@ -194,7 +204,7 @@ C'est la première question à poser.
   licence, mais serveur d'écoute à déployer et résolution moindre) ?
 
 Détail des réponses trouvées et de leur fiabilité :
-[RESULTATS_RECHERCHE.md §11](RESULTATS_RECHERCHE.md).
+[RESULTATS_RECHERCHE.md §11](../RESULTATS_RECHERCHE.md).
 
 ### 4.2 Contraintes opérationnelles
 

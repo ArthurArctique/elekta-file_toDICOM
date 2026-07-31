@@ -3,10 +3,11 @@
 Ce qu'il ne faut pas re-découvrir. Écrit pour que quelqu'un — vous dans six mois,
 un collègue, ou une IA sans historique — puisse reprendre sans refaire le chemin.
 
-Les autres documents : [ETAT_DES_LIEUX.md](ETAT_DES_LIEUX.md) pour la synthèse
-critiquable, [RESULTATS_RECHERCHE.md](RESULTATS_RECHERCHE.md) pour les mesures
-avec leur niveau de preuve, [COMPRENDRE_LES_FICHIERS.md](COMPRENDRE_LES_FICHIERS.md)
-pour les formats.
+Point d'entrée du projet : [README.md](README.md). Les autres documents :
+[ETAT_DES_LIEUX.md](ETAT_DES_LIEUX.md) pour la synthèse critiquable,
+[RESULTATS_RECHERCHE.md](RESULTATS_RECHERCHE.md) pour les mesures avec leur
+niveau de preuve, [COMPRENDRE_LES_FICHIERS.md](COMPRENDRE_LES_FICHIERS.md) pour
+les formats.
 
 ---
 
