@@ -121,6 +121,59 @@ faux et vraisemblables — c'est arrivé, à 48 mm près.
 
 ---
 
+## Données, confidentialité et rôle de l'IA
+
+Ce projet a été mené avec l'assistance d'une IA. La règle a été simple et tenue
+d'un bout à l'autre : **aucune donnée patient ni aucun fichier machine réel n'a
+été transmis.**
+
+### Ce à quoi l'IA a eu accès
+
+| Source | Nature |
+|---|---|
+| Jeu de test public de **pymedphys** (Zenodo) | Données de recherche publiées et anonymisées : deux couples TRF + RT Plan appariés, six TRF d'un arc VMAT. Patient « PHYSICS, TEST » — ce sont des délivrances de **contrôle qualité**, pas des traitements |
+| Code source de **pymedphys** installé localement | Pour établir les conventions de décodage plutôt que les supposer |
+| Sources publiques | Dépôt GitHub et journal de pymedphys, articles publiés, déclaration de conformité DICOM de Mosaiq, documentation du format RTP Connect |
+| Le dépôt lui-même | Scripts et documents |
+
+Tout ce qui est mesuré et chiffré dans ces documents provient de ces données
+publiques. Elles sont retéléchargeables par
+`exploration/verification_chaine.py`, ce qui rend chaque résultat reproductible
+par un tiers.
+
+### Ce à quoi l'IA n'a jamais eu accès
+
+- Les **420 fichiers TRF réels** de la sauvegarde SDD hebdomadaire
+- Le **plan RTP** exporté depuis Mosaiq
+- Le moindre identifiant de patient, nom de champ réel ou horodatage de séance
+- La base Mosaiq
+
+### Comment les outils ont malgré tout été éprouvés sur données réelles
+
+**Par un humain, en local.** Les scripts ont été exécutés sur le poste du
+service, sur les vrais fichiers, et seuls des **résultats agrégés** ont été
+rapportés : nombres de fichiers et de séances, versions d'encodage, répartition
+des états machine, plages de MU, motifs de rejet.
+
+Ce sont ces retours — et eux seuls — qui ont révélé les défauts les plus
+coûteux : l'estimation de MU qui signalait 130 séances à tort, le nom de machine
+qui rejetait tout, la comparaison limitée à un seul faisceau sur un plan à deux
+arcs. Aucun n'aurait été trouvé sur les seules données publiques.
+
+### Ce que cette contrainte a produit
+
+Elle a orienté la conception, pour le mieux :
+
+- **Les scripts tournent en local**, sans réseau, et ne transmettent rien.
+- **`lecteur_trf.html` décode entièrement dans le navigateur** — un TRF réel peut
+  y être ouvert sans qu'aucun octet ne quitte le poste.
+- **Le mode `--diagnostic`** n'affiche que des chiffres et des octets bruts, de
+  quoi comprendre un problème sans exposer de contenu.
+- **Le `.gitignore`** exclut `.trf`, `.dcm`, `.rtp`, `data/` et les rapports
+  produits, dès avant l'arrivée des vraies données.
+
+---
+
 ## La réserve de fond
 
 Tout ce qui est mesuré ici relève de la **cohérence interne**. Les méthodes
