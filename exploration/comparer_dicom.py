@@ -379,10 +379,15 @@ def construire(profils, ordre, defaut):
                  "l'axe des MU mal conditionné : l'écart y est largement "
                  "méthodologique, et de faible poids dosimétrique.",
                  style={"fontSize": "12px", "opacity": .65}),
-        dash_table.DataTable(id="pics", **TABLEAU,
-                             columns=[{"name": c, "id": c} for c in
-                                      ("point", "MU du segment", "course des lames",
-                                       "écart p95 max", "par fraction", "lecture")]),
+        dash_table.DataTable(
+            id="pics", sort_action="native", **TABLEAU,
+            # Affichés dans l'ordre de la délivrance — on y voit s'ils se
+            # groupent —, mais triables : cliquer « écart p95 max » remet le
+            # pire en tête.
+            columns=[{"name": c, "id": c,
+                      "type": "numeric" if c == "point" else "text"} for c in
+                     ("point", "MU du segment", "course des lames",
+                      "écart p95 max", "par fraction", "lecture")]),
 
         html.H4("Superposition des ouvertures", style={"marginTop": "22px"}),
         html.Div(id="legende", style={"fontSize": "12px", "opacity": .7}),
