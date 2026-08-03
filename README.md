@@ -70,6 +70,7 @@ Dans `exploration/`, chacun documenté en tête de fichier.
 | **`lire_rtp.py`** | Décode un plan RTP Connect exporté par Mosaiq |
 | **`chercher_seances.py`** | Retrouve les séances d'un plan dans une archive. `--methode` explique les critères, `--detail` les déroule |
 | **`comparer_rtp_seance.py`** | Confronte un plan à une séance précise |
+| **`visualiser_rtplan.py`** | Explore un RT Plan DICOM dans le navigateur : faisceaux, points de contrôle, ouverture du collimateur, tags bruts. Champs identifiants masqués par défaut. Demande `dash` et `plotly` |
 
 ### Démonstration et vérification
 
