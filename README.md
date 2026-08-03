@@ -71,7 +71,7 @@ Dans `exploration/`, chacun documenté en tête de fichier.
 | **`chercher_seances.py`** | Retrouve les séances d'un plan dans une archive. `--methode` explique les critères, `--detail` les déroule |
 | **`comparer_rtp_seance.py`** | Confronte un plan à une séance précise |
 | **`visualiser_rtplan.py`** | Explore un RT Plan DICOM dans le navigateur : faisceaux, points de contrôle, ouverture du collimateur, tags bruts. Champs identifiants masqués par défaut. Demande `dash` et `plotly` |
-| **`seance_vers_dicom.py`** | Produit un RT Plan « délivré » depuis un plan et une séance : positions, angles et MU relevés par la machine, substitués dans la grille du plan. `--consigne` écrit la consigne du servo au lieu de la position atteinte |
+| **`seance_vers_dicom.py`** | Retrouve seul les séances d'un plan dans une archive et écrit **un RT Plan « délivré » par fraction** : positions, angles et MU relevés par la machine, substitués dans la grille du plan. `--consigne` écrit la consigne du servo au lieu de la position atteinte |
 
 ### Démonstration et vérification
 
