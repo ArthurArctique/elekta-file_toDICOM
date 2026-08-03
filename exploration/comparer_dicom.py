@@ -236,6 +236,61 @@ def figure_superposition(profils, reference, choisis, etat, index):
     return figure
 
 
+def pics(profils, reference, choisis, etat, combien=10):
+    """Les points de contrôle les plus déviants, et de quoi les interpréter.
+
+    Un pic isolé ne dit pas grand-chose ; deux questions le qualifient.
+
+    **Revient-il à chaque fraction ?** Si oui il est structurel — il tient au
+    plan ou à la méthode, pas à la journée. Sinon il s'est passé quelque chose
+    ce jour-là, et c'est bien plus intéressant.
+
+    **Combien de dose ce segment délivre-t-il, pour combien de mouvement ?**
+    Les MU sont le seul axe dont on dispose pour recaler le log sur le plan. Un
+    point de contrôle où les lames parcourent 20 mm pour 1 MU y est presque
+    dégénéré : une incertitude minime sur les MU s'y traduit par un grand écart
+    de position. Mesuré sur les données de référence : les points déviants
+    délivrent 1,0 MU pour 14 à 22 mm de course, contre 5,0 MU pour 1,1 mm sur
+    les points calmes — corrélation de 0,64 entre l'écart et les mm par MU.
+    Leur poids dosimétrique est faible par construction, puisqu'ils ne
+    délivrent presque rien.
+    """
+    ref = profils[reference]
+    retenus = [n for n in choisis if n != reference and not etat.get(n)]
+    if not retenus:
+        return []
+
+    masque = paires_ouvertes(ref["lames"])
+    dmu = np.diff(ref["mu"], prepend=0.0)
+    course = np.abs(np.diff(ref["lames"], axis=0, prepend=ref["lames"][:1]))
+    vitesse = np.array([np.median(course[i][masque[i]]) / max(dmu[i], 1e-6)
+                        for i in range(len(ref["mu"]))])
+
+    par_fraction = {}
+    for nom in retenus:
+        _, p95, _ = ecarts_par_point(ref, profils[nom])
+        par_fraction[nom] = p95
+
+    pire = np.max(np.array(list(par_fraction.values())), axis=0)
+    classement = np.argsort(-pire)[:combien]
+
+    lignes = []
+    for i in sorted(classement):
+        # « commun » : déviant dans toutes les fractions, pas seulement la pire
+        seuil = max(1.0, 0.5 * float(pire[i]))
+        partout = all(p95[i] >= seuil for p95 in par_fraction.values())
+        lignes.append({
+            "point": int(i),
+            "MU du segment": f"{dmu[i]:.2f}",
+            "course des lames": f"{vitesse[i]:.1f} mm/MU",
+            "écart p95 max": f"{pire[i]:.1f} mm",
+            "par fraction": " · ".join(f"{p95[i]:.1f}" for p95 in par_fraction.values()),
+            "lecture": ("structurel — revient à chaque fraction"
+                        if partout else "varie d'une fraction à l'autre"),
+        })
+    return lignes
+
+
 def bilan(profils, reference, choisis, etat):
     ref = profils[reference]
     lignes = []
@@ -316,6 +371,19 @@ def construire(profils, ordre, defaut):
         html.H4("Écart d'angle de bras", style={"marginTop": "18px"}),
         dcc.Graph(id="bras"),
 
+        html.H4("Les points de contrôle les plus déviants",
+                style={"marginTop": "22px"}),
+        html.Div("Un pic qui revient à chaque fraction tient au plan ou à la "
+                 "méthode. Un pic propre à une fraction s'est passé ce jour-là. "
+                 "Une forte course de lames pour peu de MU rend le recalage sur "
+                 "l'axe des MU mal conditionné : l'écart y est largement "
+                 "méthodologique, et de faible poids dosimétrique.",
+                 style={"fontSize": "12px", "opacity": .65}),
+        dash_table.DataTable(id="pics", **TABLEAU,
+                             columns=[{"name": c, "id": c} for c in
+                                      ("point", "MU du segment", "course des lames",
+                                       "écart p95 max", "par fraction", "lecture")]),
+
         html.H4("Superposition des ouvertures", style={"marginTop": "22px"}),
         html.Div(id="legende", style={"fontSize": "12px", "opacity": .7}),
         dcc.Slider(id="point", min=0, max=len(profils[defaut]["lames"]) - 1,
@@ -338,8 +406,8 @@ def construire(profils, ordre, defaut):
 
     @application.callback(
         Output("ecart", "figure"), Output("bras", "figure"),
-        Output("bilan", "data"), Output("avertissements", "children"),
-        Output("point", "max"),
+        Output("bilan", "data"), Output("pics", "data"),
+        Output("avertissements", "children"), Output("point", "max"),
         Input("reference", "value"), Input("compares", "value"))
     def _comparer(reference, choisis):
         choisis = choisis or []
@@ -349,6 +417,7 @@ def construire(profils, ordre, defaut):
         return (figure_ecart(profils, reference, choisis, etat),
                 figure_bras(profils, reference, choisis, etat),
                 bilan(profils, reference, choisis, etat),
+                pics(profils, reference, choisis, etat),
                 " · ".join(alertes),
                 len(profils[reference]["lames"]) - 1)
 
