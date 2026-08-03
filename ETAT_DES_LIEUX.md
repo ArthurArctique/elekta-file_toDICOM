@@ -290,12 +290,18 @@ numéro de machine, un horodatage UTC et deux étiquettes de champ. Aucun fichie
 DICOM ni RTP ne changera ça : le lien vers le dossier est **dans Mosaiq**.
 
 C'est d'ailleurs ce que fait pymedphys, qui interroge la base SQL pour
-identifier ses logs. La requête est reprise et documentée dans
-[`exploration/mosaiq_lier_seances.sql`](exploration/mosaiq_lier_seances.sql) —
-en lecture seule, à partir de (machine, fenêtre horaire locale).
+identifier ses logs — dans `_mosaiq/delivery.py` et `_mosaiq/helpers.py`. Il y
+croise `TrackTreatment`, `TxField`, `Site`, `Ident`, `Patient` et `Staff`, à
+partir de la machine et d'une fenêtre horaire locale.
 
-Elle rend le **nom du site de traitement** (`Site.Site_Name`), l'identité du
-dossier, et surtout deux colonnes précieuses :
+> ⚠️ **Aucune requête n'est fournie ici.** Les noms de tables ci-dessous sont
+> relevés dans le code de pymedphys, qui fonctionne sur ses installations — mais
+> rien n'a pu être vérifié contre une vraie base, et le schéma varie d'une
+> version de Mosaiq à l'autre. Écrire du SQL non testé pour une base clinique
+> serait imprudent : la requête est à composer par qui aura l'accès, en repartant
+> du code amont.
+
+Deux colonnes valent d'être cherchées le jour venu :
 
 | Colonne | Ce qu'elle apporte |
 |---|---|
@@ -312,8 +318,7 @@ Correspondance des étiquettes, d'après la documentation de pymedphys :
 > C'est précisément la règle mise en œuvre ici pour découper les séances.
 
 ⚠️ **Voie fermée pour l'instant** : l'accès à la base Mosaiq n'est pas
-disponible. La requête reste consignée pour le jour où il le serait, mais elle
-ne débloque rien aujourd'hui. Et l'objection est juste : ce qu'elle irait
+disponible, et rien n'a donc pu être vérifié contre une vraie base. Et l'objection est juste : ce qu'elle irait
 chercher — nom du site, MU prévues — est la même information que porteraient
 les tags DICOM, puisque Mosaiq la tient de l'import du plan.
 

@@ -78,7 +78,6 @@ Dans `exploration/`, chacun documenté en tête de fichier.
 | `trf_vers_dicom_vmat.py` | TRF → RT Plan DICOM en VMAT, par substitution |
 | `verification_chaine.py` | Rejoue les vérifications sur les données publiques |
 | `extraire_donnees_visu.py` | Alimente le visualiseur |
-| `mosaiq_lier_seances.sql` | Requête SQL, pour le jour où l'accès existera |
 
 ### Pages autonomes
 

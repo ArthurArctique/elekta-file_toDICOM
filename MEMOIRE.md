@@ -219,7 +219,6 @@ Tout est dans `exploration/`, chaque script documenté en tête de fichier.
 | `verification_chaine.py` | Rejoue les vérifications sur les données publiques |
 | `lecteur_trf.html` | Lecteur de TRF autonome, tout dans le navigateur |
 | `visualiseur.html` | Explique visuellement la traduction plan ↔ log |
-| `mosaiq_lier_seances.sql` | Requête SQL, pour le jour où l'accès à la base existera |
 
 ### Les recettes
 

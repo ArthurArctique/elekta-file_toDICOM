@@ -22,3 +22,7 @@ illisibles.csv
 
 # Plans exportes depuis Mosaiq
 *.rtp
+
+# Requetes SQL Mosaiq : jamais executees contre une vraie base, le schema
+# n'a pu etre verifie sur aucune installation. A garder en local.
+*.sql
