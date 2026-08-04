@@ -24,6 +24,7 @@ est déduite des valeurs elles-mêmes.
 import argparse
 import csv
 import json
+import pathlib
 import sys
 from collections import defaultdict
 
@@ -63,10 +64,39 @@ def texte(valeur):
     return str(valeur).strip().strip('"')
 
 
-def lire(chemin):
+def detecter_encodage(chemin):
+    """Devine l'encodage du fichier, en le disant plutôt qu'en le supposant.
+
+    Le format RTP Connect ne déclare pas son encodage. Trois candidats, dans
+    cet ordre :
+
+    - **utf-8** d'abord, parce qu'il est le plus strict : une séquence d'octets
+      accentués qui n'est pas de l'UTF-8 le fait échouer, ce qui en fait un bon
+      détecteur. Un fichier purement ASCII passe ici, et c'est correct.
+    - **cp1252** ensuite, l'encodage d'un poste Windows — donc d'un export
+      Mosaiq. Il diffère de latin-1 sur la plage 0x80–0x9F : apostrophes
+      typographiques, « œ », « € ».
+    - **latin-1** en dernier recours : il ne peut pas échouer, les 256 octets y
+      ont tous une correspondance. C'est le filet, pas un choix.
+
+    Le résultat est affiché par `resumer()`. Un mauvais encodage n'abîme que les
+    textes — noms de champ et de site ; positions, MU et identifiants sont de
+    l'ASCII pur et ne bougent pas.
+    """
+    octets = pathlib.Path(chemin).read_bytes()
+    for encodage in ("utf-8-sig", "cp1252"):
+        try:
+            octets.decode(encodage)
+            return encodage
+        except UnicodeDecodeError:
+            continue
+    return "latin-1"
+
+
+def lire(chemin, encodage):
     """Rend les enregistrements groupés par mot-clé."""
     groupes = defaultdict(list)
-    with open(chemin, encoding="latin-1", newline="") as fichier:
+    with open(chemin, encoding=encodage, newline="") as fichier:
         for ligne in csv.reader(fichier):
             if ligne:
                 groupes[texte(ligne[0])].append(ligne)
@@ -97,7 +127,8 @@ def nature_des_mu(valeurs, total_faisceau):
 
 
 def extraire(chemin):
-    groupes = lire(chemin)
+    encodage = detecter_encodage(chemin)
+    groupes = lire(chemin, encodage)
     if "CONTROL_PT_DEF" not in groupes:
         raise SystemExit("Aucun point de contrôle dans ce fichier.")
 
@@ -111,6 +142,7 @@ def extraire(chemin):
 
     plan = {
         "fichier": chemin,
+        "encodage": encodage,
         "version_estimee": version,
         "champs_par_point": largeur,
         "debut_des_lames": debut_lames,
@@ -185,6 +217,8 @@ def resumer(plan):
     print(f"  MLC : type {plan['mlc_type']}, {plan['mlc_leaves']:.0f} lames déclarées "
           f"(le format en réserve {LAMES_PAR_BANC} par banc)")
     print(f"  conventions : MU = {plan['mu_convention']}, échelle = {plan['scale_convention']}")
+    print(f"  encodage détecté : {plan['encodage']} "
+          f"(n'affecte que les noms de champ et de site)")
     print(f"  {len(plan['faisceaux'])} faisceau(x)\n")
 
     for faisceau in plan["faisceaux"]:
