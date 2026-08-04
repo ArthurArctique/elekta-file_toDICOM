@@ -489,7 +489,7 @@ def extraire_seances(seances, resumes, destination):
     return total_fichiers, total_octets
 
 
-def regrouper(resumes, ecart_max_s, seuil_complet):
+def regrouper(resumes, ecart_max_s, seuil_complet, marge_cumul=0.05):
     """Chaîne les fichiers en séances.
 
     Une séance reste ouverte tant que son cumul de MU n'atteint pas le total de
@@ -599,21 +599,51 @@ def regrouper(resumes, ecart_max_s, seuil_complet):
                     r["place_dans_seance"] = place
                     break
 
+    # Ce que le champ délivre habituellement, estimé par la MÉDIANE des cumuls
+    # de séance et non par le plus gros fichier du lot. Un champ qui part
+    # systématiquement en interruption n'a aucun fichier complet : sa référence
+    # « plus gros fichier » vaudrait une fraction du traitement, et toutes ses
+    # séances paraîtraient excessives. La médiane, elle, tient tant que la
+    # majorité des fractions se déroulent normalement.
+    cumuls = {}
+    for s in seances:
+        if s["issue"] != "sans_dose":
+            cumuls.setdefault((s["machine"], s["champ_nom"]), []).append(s["mu_cumul"])
+
     for s in seances:
         s["mu_cumul"] = round(s["mu_cumul"], 1)
         ref = s["mu_reference"]
         s["completude"] = round(s["mu_cumul"] / ref, 3) if ref else None
         s["fichiers"] = " | ".join(s["fichiers"])
-        s["doute"] = ""
+
+        habituel = cumuls.get((s["machine"], s["champ_nom"]), [])
+        s["mu_habituel"] = round(float(np.median(habituel)), 1) if habituel else None
+        s["exces"] = None
+        if s["mu_habituel"] and len(habituel) >= 3:
+            s["exces"] = round(s["mu_cumul"] / s["mu_habituel"] - 1, 3)
+
+        doutes = []
         if s["issue"] == "sans_dose":
-            s["doute"] = "aucune dose enregistrée : ce n'est pas un traitement"
+            doutes.append("aucune dose enregistrée : ce n'est pas un traitement")
         elif s["issue"] == "interrompue":
-            s["doute"] = (
-                f"se termine sur « {s['etat_final']} » : la suite manque, "
-                "ou la séance a été abandonnée"
-            )
+            doutes.append(f"se termine sur « {s['etat_final']} » : la suite manque, "
+                          "ou la séance a été abandonnée")
         elif s["issue"] == "indeterminee":
-            s["doute"] = f"état final inhabituel : « {s['etat_final']} »"
+            doutes.append(f"état final inhabituel : « {s['etat_final']} »")
+
+        # Le chaînage court-circuite le garde-fou des MU tant que la séance est
+        # interrompue — c'est ce qui permet de recoller les fragments. Le prix
+        # est qu'une délivrance partielle suivie d'une reprise **complète** se
+        # chaîne aussi, et donne un cumul supérieur au traitement. Une vraie
+        # reprise ne délivre que le reste et retombe sur le total : les deux
+        # cas se distinguent donc au cumul, et lui seul.
+        if s["exces"] is not None and s["exces"] > marge_cumul:
+            doutes.append(
+                f"cumul de MU excessif : {s['mu_cumul']} pour {s['mu_habituel']} "
+                f"habituels ({s['exces'] * 100:+.0f} %) — reprise complète chaînée "
+                "à la tentative précédente ?"
+            )
+        s["doute"] = " · ".join(doutes)
 
     return seances
 
@@ -654,6 +684,10 @@ def main():
              "données patient sur le disque : à n'utiliser qu'en connaissance de cause.",
     )
     analyseur.add_argument(
+        "--marge-cumul", type=float, default=0.05,
+        help="signale une seance dont le cumul depasse de plus de tant "
+             "le total habituel du champ (defaut : 0.05)")
+    analyseur.add_argument(
         "--seuil-complet", type=float, default=0.97,
         help="fraction du total de référence à partir de laquelle une séance est "
              "réputée complète (défaut : 0.97)",
@@ -681,7 +715,8 @@ def main():
         print("Aucun fichier TRF exploitable trouvé.", file=sys.stderr)
         return 1
 
-    seances = regrouper(resumes, args.ecart_max, args.seuil_complet)
+    seances = regrouper(resumes, args.ecart_max, args.seuil_complet,
+                        args.marge_cumul)
 
     sortie = pathlib.Path(args.sortie)
     sortie.mkdir(parents=True, exist_ok=True)
@@ -700,7 +735,7 @@ def main():
     cols_seances = [
         "seance", "machine", "champ_etiquette", "champ_nom",
         "debut_local", "fin_local", "debut_utc", "fin_utc",
-        "nb_fichiers", "mu_cumul", "mu_reference", "completude", "etat_final",
+        "nb_fichiers", "mu_cumul", "mu_reference", "mu_habituel", "exces", "completude", "etat_final",
         "issue", "ouverture", "doute", "fichiers",
     ]
     ecrire_csv(sortie / "fichiers.csv", sorted(resumes, key=lambda r: r["debut_utc"]), cols_fichiers)
