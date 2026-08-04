@@ -42,6 +42,60 @@ en nom de colonne via la table `item_part_names` de pymedphys
 Un en-tête qui annonce 0 MU n'est pas anormal — 62 fichiers sur 420 dans une
 semaine réelle. **Le corps fait foi.**
 
+Le hexdump annoté des 48 premiers octets réels est dans
+[COMPRENDRE_LES_FICHIERS.md](COMPRENDRE_LES_FICHIERS.md#lentête-octet-par-octet).
+En code, la lecture tient en quelques lignes :
+
+```python
+p = 0
+for _ in range(4):                       # date, fuseau, champ, machine
+    n = octets[p]
+    texte = octets[p+1 : p+1+n].decode("ascii", "replace")
+    p += 1 + n
+
+mu_dixiemes = np.frombuffer(octets, np.float64, 1, p)[0]
+version     = int(np.frombuffer(octets, np.int32, 1, p + 8)[0])
+nb_colonnes = int(np.frombuffer(octets, np.int32, 1, p + 12)[0])
+schema      = np.frombuffer(octets, np.int16, nb_colonnes * 2, p + 16)
+fin_entete  = p + 16 + nb_colonnes * 4
+```
+
+Sur le fichier VMAT public : `p = 41`, version 3, 350 colonnes,
+`fin_entete = 1457`.
+
+### Attention : la date est celle de la FIN
+
+Le fichier `20_04_28 21_53_39 Z` couvre **21:51:50 → 21:53:39**, pas l'inverse.
+Vérifié en confrontant les écarts de date au compteur machine sur six fichiers :
+l'hypothèse « fin » colle à 0,72 s en médiane, l'hypothèse « début » se trompe
+de 60 s. C'est contre-intuitif et ça fausse tout appariement horaire.
+
+La date est en UTC ; le fuseau donne le décalage local.
+
+### Valider avant de faire confiance
+
+Une archive réelle contient des fichiers abîmés. Cinq contrôles suffisent, et
+chacun doit **rejeter le fichier avec un motif**, jamais le laisser passer :
+
+| Contrôle | Motif |
+|---|---|
+| `len(octets) >= 64` | fichier trop court |
+| la date correspond à `\d\d[/-]\d\d[/-]\d\d \d\d:\d\d:\d\d Z` | en-tête non reconnu |
+| `version` est dans la table | version d'encodage inconnue |
+| `0 < nb_colonnes < 5000` | nombre de colonnes aberrant |
+| au moins une ligne complète dans le corps | aucune ligne de données |
+
+Le contrôle sur la date est le plus utile : c'est la signature d'un changement
+de format d'en-tête (Integrity 4.1.0.0, cf. pymedphys#1890), et il se distingue
+d'un fichier simplement tronqué.
+
+Prévoir aussi un `except` général autour du décodage : un en-tête complet suivi
+d'un corps tronqué fait échouer `np.frombuffer` avant d'atteindre les contrôles.
+Sur six fichiers volontairement abîmés (vide, tronqué, date écrasée, en-tête
+seul, texte quelconque, queue coupée), les cinq premiers sont rejetés avec un
+motif exploitable et le sixième est lu normalement, avec ses octets en trop
+signalés.
+
 ### Corps
 
 La géométrie dépend de la version :
@@ -97,6 +151,82 @@ combinaison donne un écart-type de 0,1 mm, la mauvaise de 46 mm.
 39 `Move Only`, 40 `Pause`, 41 `Intersegment`, 42 `Radiation On`,
 43 `Interupted`, 44 `Interupted Ready`, 45 `Terminated Checking`,
 46 `Terminated Ok`, 47 `Terminated Fault`.
+
+### Extraire une colonne sans décoder le tableau
+
+Un TRF d'une semaine pèse quelques gigaoctets et on n'a besoin que de trois ou
+quatre colonnes sur 350. Voir le corps comme une **grille d'octets**, découper
+la tranche voulue, et la relire dans le bon type :
+
+```python
+grille = np.frombuffer(corps, np.uint8, nb_lignes * taille_ligne) \
+           .reshape(nb_lignes, taille_ligne)
+debut   = prefixe + indice_colonne * taille_valeur
+tranche = np.ascontiguousarray(grille[:, debut : debut + taille_valeur])
+valeurs = tranche.view(np.int16).ravel().astype(float)     # int32 en version 4
+```
+
+Le `ascontiguousarray` est obligatoire : sans lui, `view` refuse une tranche
+non contiguë.
+
+### Vérifier qu'on a bien décodé
+
+**C'est l'étape à ne pas sauter.** Une erreur de signe ou d'échelle ne fait pas
+planter : elle donne des valeurs plausibles et fausses. La seule vérification
+qui vaille est de confronter **colonne par colonne** à pymedphys, qui a vu
+beaucoup plus de fichiers.
+
+Extrait du contrôle, sur la ligne 500 du fichier VMAT :
+
+| Colonne | Brut | Écart si ÷10 | Écart si ÷10 puis ×−1 |
+|---|---|---|---|
+| `Step Dose/Actual Value (Mu)` | 651 | **0,0000** | 853,2 |
+| `Y1 Leaf 40/Scaled Actual (mm)` | 569 | **0,0000** | 256,4 |
+| `Y2 Leaf 40/Scaled Actual (mm)` | 158 | 250,2 | **0,0000** |
+| `Control point/Actual Value` | 19 | 99,0 | 121,0 |
+
+La bonne convention se lit sans ambiguïté : l'écart tombe à zéro exactement.
+`Control point` n'est bon dans aucune des deux — c'est une des 12 colonnes sans
+mise à l'échelle.
+
+Résultat du contrôle complet : **350/350 colonnes identiques au bit près** sur
+un fichier v1, **354/354** sur un v3. Les 4 colonnes supplémentaires en v3 sont
+les `unknown1..4` du préfixe de ligne, que pymedphys place en tête.
+
+### Le compteur de millisecondes du préfixe
+
+Les 8 octets de préfixe des versions ≥ 2, lus en `uint64` petit-boutiste,
+donnent un compteur en millisecondes. Mesuré sur le fichier VMAT : pas médian
+**40 ms**, minimum 39, maximum 41, et **11 % des intervalles ne font pas
+exactement 40 ms**. La durée qu'il donne (108,64 s) coïncide avec le comptage de
+lignes (108,68 s).
+
+pymedphys ne l'utilise pas et reconstruit le temps par « numéro de ligne ×
+40 ms ». C'est sans conséquence ici — l'écart ne dérive pas — mais une vraie
+coupure d'échantillonnage serait silencieusement écrasée en un intervalle
+régulier. Le décoder permet de la détecter.
+
+### Repérer les remises à zéro du compteur de MU
+
+Le compteur repart de zéro **à chaque faisceau**, y compris à l'intérieur d'un
+même fichier. Ne pas les repérer revient à ne relever que le plus gros faisceau.
+
+La signature est que la valeur **retombe à zéro**, pas que la chute soit ample :
+un seuil sur l'amplitude rate les petits faisceaux.
+
+```python
+plancher = max(0.5, 0.01 * mu.max())
+ruptures = np.where((np.diff(mu) < 0) & (mu[1:] <= plancher))[0]
+total    = sum(mu[i] for i in ruptures) + mu[-1]
+```
+
+Sur le fichier VMAT : 0 rupture, 1 faisceau, total 426,6 MU pour 426,7 annoncées.
+
+### Lire depuis une archive sans l'extraire
+
+Les SDD sont des zips de plusieurs gigaoctets. `zipfile.ZipFile.read(nom)` rend
+les octets en mémoire, ce qui suffit à tout ce qui précède. Seul `pymedphys.trf.read`
+exige un chemin : lui passer par un fichier temporaire.
 
 → `exploration/organiser_trf.py` (Python), `exploration/lecteur_trf.html` (JS).
 
