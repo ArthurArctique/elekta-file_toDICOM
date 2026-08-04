@@ -86,6 +86,7 @@ Dans `exploration/`, chacun documenté en tête de fichier.
 | Script | Rôle |
 |---|---|
 | `diagnostic_cumuls.py` | Examine la colonne `exces` de `seances.csv` : dit si les chaînages abusifs sont isolés, ou si la référence elle-même est contaminée |
+| `seances_par_horloge.py` | Découpage alternatif : recolle tous les échantillons d'une machine sur son horloge interne et coupe aux « Terminated Ok ». `--comparer` le confronte à `organiser_trf.py` |
 | `trf_vers_dicom_vmat.py` | TRF → RT Plan DICOM en VMAT, par substitution |
 | `verification_chaine.py` | Rejoue les vérifications sur les données publiques |
 | `extraire_donnees_visu.py` | Alimente le visualiseur |
