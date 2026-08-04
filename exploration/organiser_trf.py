@@ -76,17 +76,50 @@ NOMS_ETATS = {16: "Closed", 34: "State Code Unknown", 39: "Move Only", 40: "Paus
 PAS = 0.04  # 25 Hz
 
 
+def noms_essentiels():
+    """Les seuls codes de colonne dont ce script a besoin, en dur.
+
+    Sans ce minimum, l'absence de pymedphys ne dégradait pas l'inventaire : elle
+    le faussait. Les colonnes apparaissaient sous leur code brut, donc
+    `COL_MU` et `COL_ETAT` étaient introuvables, donc le total de MU retombait
+    sur l'en-tête — nul dans 62 fichiers réels sur 420 — et le chaînage en
+    séances perdait l'état machine, sa règle principale. Le tout sans un mot.
+
+    Ces codes sont vérifiables sur n'importe quel TRF : ce sont les paires du
+    schéma d'en-tête. pymedphys reste préféré quand il est là, pour nommer les
+    350 colonnes et non seulement celles-ci.
+    """
+    noms = {
+        "2240_111": "Control point/Actual Value (None)",
+        "2543_111": "Linac State/Actual Value (None)",
+        "2542_111": "Actual Dose Rate/Actual Value (Mu/min)",
+        "2238_111": "Step Dose/Actual Value (Mu)",
+        "2224_129": "Step Gantry/Scaled Actual (deg)",
+        "2225_129": "Step Collimator/Scaled Actual (deg)",
+        "2060_129": "X1 Diaphragm/Scaled Actual (mm)",
+        "2061_129": "X2 Diaphragm/Scaled Actual (mm)",
+        "2064_129": "Dlg Y2/Scaled Actual (mm)",
+        "2065_129": "Dlg Y1/Scaled Actual (mm)",
+    }
+    for i in range(1, 81):                       # les deux bancs de lames
+        noms[f"{2459 + i}_129"] = f"Y1 Leaf {i}/Scaled Actual (mm)"
+        noms[f"{2379 + i}_129"] = f"Y2 Leaf {i}/Scaled Actual (mm)"
+    return noms
+
+
 def charger_noms_colonnes():
-    """Dictionnaire code → nom de colonne, emprunté à pymedphys s'il est là."""
+    """Dictionnaire code → nom de colonne, complété par pymedphys s'il est là."""
+    noms = noms_essentiels()
     try:
         import pymedphys
 
         chemin = (
             pathlib.Path(pymedphys.__file__).parent / "_trf" / "decode" / "config.json"
         )
-        return json.loads(chemin.read_text())["item_part_names"]
+        noms.update(json.loads(chemin.read_text())["item_part_names"])
     except Exception:
-        return {}
+        pass
+    return noms
 
 
 NOMS = charger_noms_colonnes()

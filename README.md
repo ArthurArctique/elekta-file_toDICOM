@@ -39,8 +39,15 @@ C'est le seul verrou. Le reste est de l'ingénierie dont le principe est établi
 
 ## Démarrage
 
-Aucune dépendance obligatoire hors `numpy`. `pymedphys` est utilisé s'il est
-présent, uniquement pour nommer les colonnes.
+`organiser_trf.py` ne demande que `numpy` : il décode le TRF lui-même et garde
+en dur les codes des colonnes dont il dépend. `pymedphys` le complète s'il est
+présent, pour nommer les 350 colonnes — les séances reconstituées sont
+identiques dans les deux cas.
+
+Les outils qui écrivent du DICOM (`seance_vers_dicom.py`,
+`trf_vers_dicom_vmat.py`) demandent en revanche `pymedphys` et `pydicom` : ils
+reprennent ses conversions de repère plutôt que de les réécrire. Les pages
+`dash` demandent `dash` et `plotly`.
 
 ```bash
 # 1. inventorier une semaine de logs, sans rien déplacer

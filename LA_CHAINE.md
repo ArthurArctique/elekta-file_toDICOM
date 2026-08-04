@@ -10,6 +10,82 @@ technique, puis où elle est implémentée si on veut la lire en entier.
 Binaire non documenté, rétro-conçu par pymedphys. Un en-tête, puis un tableau
 d'échantillons à **40 ms** (25 Hz).
 
+### Qui décode quoi
+
+Il y a **deux chemins de décodage** dans ce projet, employés à des moments
+différents. Il faut le savoir avant de lire la suite.
+
+| | Décodeur propre | pymedphys |
+|---|---|---|
+| **Entrée** | des **octets** en mémoire | un **chemin** sur disque |
+| **Sortie** | les 3 ou 4 colonnes demandées, en `numpy` | les 350 colonnes, en `DataFrame` |
+| **Emprunte à pymedphys** | seulement le dictionnaire code → nom | tout |
+| **Employé pour** | inventorier une archive, regrouper en séances, l'empreinte de champ | la géométrie complète, les conversions de repère, l'écriture DICOM |
+| **Dans** | `organiser_trf.py`, `comparer_rtp_seance.py`, `lecteur_trf.html` | `seance_vers_dicom.py`, `verification_chaine.py`, `trf_vers_dicom_vmat.py` |
+
+**Pourquoi ne pas tout confier à pymedphys.** Inventorier 420 fichiers revient à
+décoder 420 × 350 colonnes en `DataFrame` alors qu'on n'a besoin que de quatre
+d'entre elles — MU, point de contrôle, état machine, bras. Et `pymedphys.trf.read`
+exige un **chemin sur disque**, ce qui obligerait à extraire des gigaoctets d'un
+zip pour n'en lire que les métadonnées. Le décodeur propre travaille directement
+sur les octets rendus par `zipfile`.
+
+**Pourquoi ne pas tout décoder soi-même.** Dès qu'on a besoin de la géométrie
+complète — 160 lames, mâchoires, angles — et surtout des conversions de repère
+pour réécrire du DICOM, réimplémenter les conventions de pymedphys serait
+imprudent : c'est exactement de là que venait une erreur de 48 mm. Là, on prend
+les siennes.
+
+`seance_vers_dicom.py` utilise **les deux** : le décodeur propre pour découper
+l'archive en séances, pymedphys pour la géométrie de chaque séance retenue.
+
+**Ce que le décodeur propre emprunte, exactement** : le dictionnaire
+`item_part_names` de `pymedphys/_trf/decode/config.json`, qui traduit une paire
+de codes du schéma en nom de colonne. Rien d'autre.
+
+Il faut cependant **garder en dur les quelques codes dont on dépend**, et ne
+traiter pymedphys que comme un complément :
+
+```python
+NOMS = {"2238_111": "Step Dose/Actual Value (Mu)",
+        "2543_111": "Linac State/Actual Value (None)",
+        "2240_111": "Control point/Actual Value (None)",
+        "2224_129": "Step Gantry/Scaled Actual (deg)", ...}
+for i in range(1, 81):
+    NOMS[f"{2459 + i}_129"] = f"Y1 Leaf {i}/Scaled Actual (mm)"
+    NOMS[f"{2379 + i}_129"] = f"Y2 Leaf {i}/Scaled Actual (mm)"
+try:
+    import pymedphys
+    chemin = pathlib.Path(pymedphys.__file__).parent / "_trf/decode/config.json"
+    NOMS.update(json.loads(chemin.read_text())["item_part_names"])
+except Exception:
+    pass                    # les 340 autres colonnes gardent leur code brut
+```
+
+**Pourquoi ce n'est pas une précaution théorique.** Sans ce minimum, l'absence de
+pymedphys ne dégradait pas l'inventaire, elle le **faussait silencieusement** :
+les colonnes n'ayant plus de nom, celle des MU et celle de l'état machine
+devenaient introuvables. Le total de MU retombait alors sur la valeur de
+l'en-tête — nulle dans 62 fichiers réels sur 420 — et le chaînage en séances
+perdait l'état machine, c'est-à-dire sa règle principale. Sans un mot
+d'avertissement.
+
+Avec les codes essentiels en dur, l'inventaire des 9 TRF publics rend
+**exactement les mêmes séances** avec et sans pymedphys : mêmes totaux de MU,
+mêmes états finaux, même séance reconstituée à partir de 4 fragments. Seules les
+colonnes non essentielles s'affichent sous leur code brut (`2177_100`).
+
+C'est aussi ce qui se produit pour un capteur absent du dictionnaire — ce n'est
+pas une erreur, c'est une lacune, et elle est réparable.
+
+Le décodeur propre **n'applique pas la passe d'échelle complète** : il découpe
+les colonnes qu'on lui demande et leur applique leur facteur explicitement
+(`/10` pour les MU et les lames). La table complète des facteurs, §
+« Mise à l'échelle », vaut pour qui veut décoder les 350.
+
+La garantie que les deux chemins s'accordent est le contrôle colonne par
+colonne décrit plus bas — 350/350 et 354/354 identiques au bit près.
+
 ### En-tête
 
 Quatre chaînes préfixées par leur longueur sur 1 octet, à la suite :
