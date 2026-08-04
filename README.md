@@ -95,7 +95,8 @@ Dans `exploration/`, chacun documenté en tête de fichier.
 
 | Fichier | Pour quoi faire |
 |---|---|
-| **[MEMOIRE.md](MEMOIRE.md)** | **À lire en premier.** Les pièges qui produisent un résultat plausible et faux, les chiffres mesurés, et les erreurs commises pendant le projet |
+| **[LA_CHAINE.md](LA_CHAINE.md)** | **À lire en premier.** Les cinq étapes, les tags DICOM qui répondent aux colonnes du TRF, et les seules valeurs qui décident. Une lecture |
+| **[MEMOIRE.md](MEMOIRE.md)** | Les pièges qui produisent un résultat plausible et faux, les chiffres mesurés, et les erreurs commises pendant le projet |
 | [COMPRENDRE_LES_FICHIERS.md](COMPRENDRE_LES_FICHIERS.md) | Les deux formats expliqués sans prérequis de physique médicale, sur de vrais octets |
 | [ETAT_DES_LIEUX.md](ETAT_DES_LIEUX.md) | La synthèse critiquable : chaque affirmation avec son niveau de preuve |
 | [RESULTATS_RECHERCHE.md](RESULTATS_RECHERCHE.md) | Le détail des mesures, corrections comprises |
