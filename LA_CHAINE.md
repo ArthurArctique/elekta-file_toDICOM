@@ -222,11 +222,59 @@ total    = sum(mu[i] for i in ruptures) + mu[-1]
 
 Sur le fichier VMAT : 0 rupture, 1 faisceau, total 426,6 MU pour 426,7 annoncées.
 
-### Lire depuis une archive sans l'extraire
+### Lire l'archive SDD sans rien extraire
 
-Les SDD sont des zips de plusieurs gigaoctets. `zipfile.ZipFile.read(nom)` rend
-les octets en mémoire, ce qui suffit à tout ce qui précède. Seul `pymedphys.trf.read`
-exige un chemin : lui passer par un fichier temporaire.
+Les logs arrivent en **System Diagnostic Dump** : des zips déposés par la
+machine dans `\\<IP_NSS>\Backup\TCS\SDD+*.zip`, avec une rétention d'environ
+**8 jours**. Une semaine sur un accélérateur, c'est de l'ordre de 400 fichiers
+et quelques gigaoctets.
+
+Rien n'a besoin d'être extrait. Les `.trf` sont à une profondeur variable dans
+l'archive : filtrer sur le suffixe plutôt que sur un chemin attendu, et lire
+chaque entrée en mémoire.
+
+```python
+with zipfile.ZipFile(chemin) as archive:
+    for nom in sorted(archive.namelist()):
+        if nom.lower().endswith(".trf"):
+            octets = archive.read(nom)          # décompressé en RAM
+```
+
+Traiter de la même façon un zip, un dossier et un `.trf` isolé permet aux
+outils d'accepter les trois sans le savoir. Chaque fichier est rendu avec
+**trois choses** :
+
+| | |
+|---|---|
+| `nom` | affichable, préfixé de son archive : `SDD+2020-04-28.zip::TCS/xxx.trf` |
+| `origine` | le triplet `(genre, chemin, interne)` |
+| `octets` | le contenu |
+
+L'`origine` est ce qui permet de **relire** un fichier plus tard sans garder les
+quelques gigaoctets en mémoire — utile quand on ne conserve que les métadonnées
+au premier passage et qu'on veut revenir sur les seuls fichiers d'une séance :
+
+```python
+def relire(origine):
+    genre, chemin, interne = origine
+    if genre == "zip":
+        with zipfile.ZipFile(chemin) as archive:
+            return archive.read(interne)
+    return pathlib.Path(chemin).read_bytes()
+```
+
+Garder le nom de l'archive dans le nom affiché évite une ambiguïté réelle : deux
+SDD successifs contiennent des fichiers de même nom.
+
+Une seule fonction exige un chemin sur disque, `pymedphys.trf.read` — lui passer
+par un fichier temporaire :
+
+```python
+with tempfile.TemporaryDirectory() as dossier:
+    f = pathlib.Path(dossier) / "x.trf"
+    f.write_bytes(octets)
+    entete, table = pymedphys.trf.read(str(f))
+```
 
 → `exploration/organiser_trf.py` (Python), `exploration/lecteur_trf.html` (JS).
 
@@ -308,17 +356,75 @@ modulo 360 après.
 durée : mesuré, le plus petit intervalle *entre* deux séances (94 s) était plus
 court que le plus grand intervalle *à l'intérieur* d'une séance (162 s).
 
-Trier les fichiers par heure de début, puis pour chacun regarder le **dernier
-code d'état** :
+### Ce qu'il faut avoir relevé par fichier
 
-- **46 `Terminated Ok`** → la délivrance est allée à son terme, la séance se clôt.
-- **43, 44, 47** → interrompue, la séance continue dans le fichier suivant.
+| | Comment |
+|---|---|
+| `machine`, `champ_nom` | chaînes de l'en-tête ; le champ se coupe sur le `/` |
+| `fin_utc` | la date de l'en-tête **telle quelle** — c'est déjà la fin |
+| `debut_utc` | `fin_utc − nombre_de_lignes × 0,04 s` |
+| `debut_local`, `fin_local` | + le décalage du fuseau, `"+10:00"` → 10 h |
+| `mu` | somme des segments entre remises à zéro (§1) |
+| `etat_final` | dernière valeur de `Linac State/Actual Value` |
+| `issue` | `terminee` si 46, `interrompue` si 43/44/47, sinon `None` |
+| `delivrance` | `mu >= 1` — en deçà ce n'est pas un traitement |
 
-Filets quand l'état manque : un écart de plus de 1800 s ouvre une nouvelle
-séance, ou un cumul de MU atteignant 97 % du total attendu la clôt.
+La conversion en heure locale n'est pas cosmétique : **Mosaiq affiche l'heure
+locale**. Sans elle, aucune séance n'est retrouvable — on cherche des séances à
+6 h du matin qui n'existent pas.
 
-Les enregistrements sans dose (< 1 MU) sont isolés : ce ne sont pas des
-traitements.
+### Le total de référence
+
+Avant de chaîner, établir pour chaque couple `(machine, champ_nom)` le **plus
+grand cumul de MU observé dans tout le lot**. C'est l'estimation de ce que le
+champ délivre quand il va au bout, et elle sert de repli quand l'état machine
+manque. La tirer du lot plutôt que d'un plan évite d'avoir besoin du plan à ce
+stade.
+
+### Le chaînage
+
+Trier par `(machine, debut_utc)`, puis pour chaque fichier décider s'il **ouvre**
+une séance ou **prolonge** la courante. Dans cet ordre :
+
+```
+si le fichier ne délivre pas (< 1 MU) :
+    l'isoler dans sa propre entrée, et NE PAS toucher à la séance courante
+    → un cliché d'imagerie glissé entre deux fragments ne doit pas couper la séance
+
+sinon, on ouvre une nouvelle séance si :
+    aucune séance courante                          « premier fichier »
+    machine différente                              « machine différente »
+    champ différent                                 « champ différent »
+    debut_utc − fin_utc(courante) > 1800 s          « écart de N min »
+    la courante est `terminee`                      « menée à son terme »
+    état absent ET cumul ≥ 0,97 × référence         « cumul de MU atteint »
+
+sinon, prolonger : ajouter le fichier, cumuler les MU, avancer fin_utc,
+et reprendre l'état final et l'issue du nouveau fichier
+```
+
+Trois points qui comptent :
+
+- **L'ordre des tests.** L'écart de temps est examiné *avant* l'état machine :
+  deux délivrances du même champ à trois heures d'intervalle sont deux séances,
+  même si la première a été interrompue.
+- **Les enregistrements sans dose sont transparents.** Les isoler *et* laisser la
+  séance courante intacte est la seule façon de ne pas couper une séance
+  interrompue par une imagerie.
+- **Le cumul de MU n'est qu'un repli**, employé seulement quand `etat_final` est
+  absent. C'est l'état machine qui décide quand il est là.
+
+À la fin, noter la position de chaque fichier dans sa séance — seul, premier,
+milieu, dernier : un fichier destiné à être poursuivi ne se comporte pas comme
+celui qui conclut, et c'est utile pour diagnostiquer.
+
+### Vérification
+
+Sur les 9 TRF publics : 6 séances, dont une reconstituée à partir de 4
+fragments, et 3 séances du même plan VMAT à 426,4–426,6 MU chacune. Sur une
+semaine réelle : 420 fichiers, 0 illisible, 356 séances, 41 signalées à
+vérifier — contre 130 avec une première version qui estimait le total de
+référence par le nom de champ.
 
 → `exploration/organiser_trf.py`.
 
