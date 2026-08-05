@@ -3,11 +3,11 @@
     from visualiseur_seances import Visualiseur
     Visualiseur().lancer()                       # puis http://127.0.0.1:8052
 
-L'archive se choisit **dans la page** : on y colle le chemin d'un zip SDD (ou
-d'un dossier de `.trf`) et on charge. Une SDD pèse plusieurs gigaoctets, elle
-n'est donc pas téléversée par le navigateur — l'application tourne en local et
-lit le fichier là où il est. Le paramètre de `Visualiseur()` ne sert qu'à
-pré-remplir le champ.
+L'archive se choisit **dans la page** : le bouton « Localiser l'archive… »
+ouvre la boîte de dialogue du système. Une SDD pesant plusieurs gigaoctets,
+elle n'est pas téléversée par le navigateur — l'application tourne sur le poste
+et lit le fichier là où il est. Le champ de texte reste disponible pour un
+copier-coller, et un second bouton accepte un dossier de `.trf`.
 
 Le découpage en séances est celui de `main.ArchiveTrf` — la classe est appelée,
 pas réimplémentée. Cette page n'est qu'une interface par-dessus.
@@ -32,12 +32,14 @@ originaux. Le `.gitignore` du dépôt l'exclut déjà.
 import datetime
 import json
 import pathlib
+import subprocess
 import sys
 import zipfile
 
 import numpy as np
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, dash_table, dcc, html
+from dash import (Dash, Input, Output, State, callback_context,
+                  dash_table, dcc, html)
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -142,6 +144,36 @@ class CacheSeances:
         return sorted(lecture._fichiers, key=lambda f: f["debut"])
 
 
+def demander_chemin(dossier=False):
+    """Ouvre la boîte de dialogue du système et rend le chemin choisi.
+
+    L'application tourne sur le poste de l'utilisateur : le dialogue s'ouvre
+    donc là où il regarde. C'est ce qui permet d'éviter `dcc.Upload`, qui ferait
+    transiter plusieurs gigaoctets par le navigateur pour rien.
+
+    Lancé dans un **sous-processus** : sur macOS, Tk refuse de s'ouvrir depuis
+    un fil d'exécution secondaire, or les callbacks Dash n'en sont jamais le
+    principal. Le sous-processus a le sien.
+
+    Rend une chaîne vide si l'utilisateur annule ou si Tk est absent.
+    """
+    ouvrir = ("askdirectory(title='Choisir un dossier de .trf')" if dossier else
+              "askopenfilename(title='Localiser l\\'archive SDD', "
+              "filetypes=[('Archives SDD', '*.zip'), ('Tous les fichiers', '*.*')])")
+    code = ("import tkinter as tk\n"
+            "from tkinter.filedialog import askopenfilename, askdirectory\n"
+            "racine = tk.Tk(); racine.withdraw()\n"
+            "racine.attributes('-topmost', True)\n"
+            f"print(({ouvrir}) or '')\n")
+    try:
+        issue = subprocess.run([sys.executable, "-c", code],
+                               capture_output=True, text=True, timeout=600)
+    except Exception as erreur:
+        print(f"  boîte de dialogue indisponible : {erreur}", file=sys.stderr)
+        return ""
+    return issue.stdout.strip()
+
+
 def etiquette(s):
     """Une ligne du menu déroulant : date · champ · MU."""
     return (f"{s['debut'][:16]}  ·  {s['champ'][:22]:<22}  ·  {s['mu']:>8.1f} MU"
@@ -180,8 +212,19 @@ class Visualiseur:
                      style={"fontSize": "12px", "opacity": .6}),
 
             html.Div([
+                html.Button("📂  Localiser l'archive…", id="parcourir", n_clicks=0,
+                            style={"padding": "8px 16px", "fontSize": "13px",
+                                   "cursor": "pointer", "borderRadius": "6px",
+                                   "border": "1px solid rgba(128,128,128,.45)",
+                                   "background": "#f4f4f5", "whiteSpace": "nowrap"}),
+                html.Button("dossier…", id="parcourir_dossier", n_clicks=0,
+                            title="choisir un dossier de .trf au lieu d'un zip",
+                            style={"padding": "8px 12px", "fontSize": "13px",
+                                   "cursor": "pointer", "borderRadius": "6px",
+                                   "border": "1px solid rgba(128,128,128,.45)",
+                                   "background": "#fafafa", "whiteSpace": "nowrap"}),
                 dcc.Input(id="chemin", type="text", value=self.defaut,
-                          placeholder="/chemin/vers/SDD+xxxx.zip  (ou un dossier de .trf)",
+                          placeholder="…ou coller ici le chemin du zip",
                           debounce=True,
                           style={"flex": "1", "padding": "8px 10px", "fontSize": "13px",
                                  "fontFamily": "ui-monospace, monospace",
@@ -191,8 +234,9 @@ class Visualiseur:
                             style={"padding": "8px 18px", "fontSize": "13px",
                                    "cursor": "pointer", "borderRadius": "6px",
                                    "border": "1px solid rgba(128,128,128,.45)",
-                                   "background": "#f4f4f5"}),
-            ], style={"display": "flex", "gap": "8px", "margin": "16px 0 6px"}),
+                                   "background": "#e8eefc", "fontWeight": 600}),
+            ], style={"display": "flex", "gap": "8px", "margin": "16px 0 6px",
+                      "alignItems": "center"}),
 
             dcc.Loading(html.Div(id="etat", style={"fontSize": "12px",
                                                    "minHeight": "18px"})),
@@ -203,6 +247,7 @@ class Visualiseur:
                          placeholder="charger une archive d'abord",
                          style={"fontFamily": "ui-monospace, monospace"}),
 
+            html.Div(id="contenu", style={"display": "none"}, children=[
             html.H4("La séance", style={"marginTop": "24px"}),
             html.Div(id="cartes", style={"display": "flex", "gap": "10px"}),
             html.Div(id="details", style={"marginTop": "14px"}),
@@ -225,6 +270,7 @@ class Visualiseur:
             html.Div(id="entete_fichier",
                      style={"fontSize": "12px", "opacity": .7, "margin": "6px 0"}),
             dash_table.DataTable(id="table", page_size=20, **TABLEAU),
+            ]),
 
             html.P("Lu en local, rien n'est transmis. Le dossier de cache "
                    "contient des copies de données patient.",
@@ -236,8 +282,21 @@ class Visualiseur:
     def _callbacks(self):
 
         @self.app.callback(
+            Output("chemin", "value"),
+            Input("parcourir", "n_clicks"), Input("parcourir_dossier", "n_clicks"),
+            State("chemin", "value"), prevent_initial_call=True)
+        def _parcourir(_zip, _dossier, actuel):
+            """Ouvre le dialogue système et remplit le champ.
+
+            Annuler laisse le champ tel quel plutôt que de l'effacer.
+            """
+            declencheur = callback_context.triggered_id
+            choisi = demander_chemin(dossier=declencheur == "parcourir_dossier")
+            return choisi or actuel or ""
+
+        @self.app.callback(
             Output("seance", "options"), Output("seance", "value"),
-            Output("etat", "children"),
+            Output("etat", "children"), Output("contenu", "style"),
             Input("charger", "n_clicks"), Input("chemin", "value"),
             prevent_initial_call=True)
         def _charger(_clics, chemin):
@@ -247,16 +306,17 @@ class Visualiseur:
             navigateur attend, d'où le `dcc.Loading` autour de cet état. Les
             suivants sont immédiats, le cache évitant tout décodage.
             """
+            cache_vide = {"display": "none"}
             if not chemin:
-                return [], None, "Indiquer le chemin d'une archive SDD."
+                return [], None, "Localiser une archive SDD, ou coller son chemin.", cache_vide
             source = pathlib.Path(chemin.strip().strip('"').strip("'"))
             if not source.exists():
-                return [], None, f"❌ introuvable : {source}"
+                return [], None, f"❌ introuvable : {source}", cache_vide
             try:
                 self.cache = CacheSeances(source, self.dossier)
             except Exception as erreur:
                 self.cache = None
-                return [], None, f"❌ {type(erreur).__name__} : {erreur}"
+                return [], None, f"❌ {type(erreur).__name__} : {erreur}", cache_vide
 
             seances = self.cache.seances()
             options = [{"label": etiquette(s), "value": i}
@@ -264,7 +324,8 @@ class Visualiseur:
             machines = sorted({s["machine"] for s in seances})
             return options, (0 if options else None), (
                 f"✅ {source.name} · {len(seances)} séance(s) · "
-                f"machine(s) {', '.join(machines)} · cache dans {self.dossier}/")
+                f"machine(s) {', '.join(machines)} · cache dans {self.dossier}/"), (
+                {"display": "block"} if options else cache_vide)
 
         @self.app.callback(
             Output("cartes", "children"), Output("details", "children"),
