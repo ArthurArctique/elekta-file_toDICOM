@@ -1,7 +1,13 @@
 """Explore les séances d'une archive SDD dans le navigateur.
 
     from visualiseur_seances import Visualiseur
-    Visualiseur("SDD+xxx.zip").lancer()          # puis http://127.0.0.1:8052
+    Visualiseur().lancer()                       # puis http://127.0.0.1:8052
+
+L'archive se choisit **dans la page** : on y colle le chemin d'un zip SDD (ou
+d'un dossier de `.trf`) et on charge. Une SDD pèse plusieurs gigaoctets, elle
+n'est donc pas téléversée par le navigateur — l'application tourne en local et
+lit le fichier là où il est. Le paramètre de `Visualiseur()` ne sert qu'à
+pré-remplir le champ.
 
 Le découpage en séances est celui de `main.ArchiveTrf` — la classe est appelée,
 pas réimplémentée. Cette page n'est qu'une interface par-dessus.
@@ -81,16 +87,20 @@ class CacheSeances:
         print(f"  cache lu : {len(contenu['seances'])} séance(s), aucun décodage")
         return contenu
 
+    def _octets(self):
+        """Le contenu de chaque .trf, que la source soit un zip ou un dossier."""
+        if self.archive.is_dir():
+            return {str(p.relative_to(self.archive)): p.read_bytes()
+                    for p in self.archive.rglob("*.trf")}
+        with zipfile.ZipFile(self.archive) as zf:
+            return {nom: zf.read(nom) for nom in zf.namelist()
+                    if nom.lower().endswith(".trf")}
+
     def _construire(self):
         print(f"  découpage de {self.archive.name} — long au premier passage…")
         seances = ArchiveTrf(self.archive).seances()
         self.dossier.mkdir(parents=True, exist_ok=True)
-
-        octets = {}
-        with zipfile.ZipFile(self.archive) as zf:
-            for nom in zf.namelist():
-                if nom.lower().endswith(".trf"):
-                    octets[nom] = zf.read(nom)
+        octets = self._octets()
 
         resumes = []
         for rang, s in enumerate(seances, start=1):
@@ -151,26 +161,46 @@ def carte(titre, valeur, note=""):
 class Visualiseur:
     """La page : un menu de séances, les infos de la séance, les TRF en détail."""
 
-    def __init__(self, archive, dossier="seances", port=8052):
-        self.cache = CacheSeances(archive, dossier)
+    def __init__(self, archive="", dossier="seances", port=8052):
+        # L'archive n'est plus obligatoire : elle se choisit dans la page. Le
+        # paramètre ne sert qu'à pré-remplir le champ.
+        self.defaut = str(archive)
+        self.dossier = dossier
+        self.cache = None
         self.port = port
         self.app = Dash(__name__, title="Séances")
         self.app.layout = self._mise_en_page()
         self._callbacks()
 
     def _mise_en_page(self):
-        options = [{"label": etiquette(s), "value": i}
-                   for i, s in enumerate(self.cache.seances())]
         return html.Div([
             html.H2("Séances de l'archive", style={"marginBottom": "2px"}),
-            html.Div(f"{self.cache.archive.name} · {len(options)} séance(s) · "
-                     f"cache dans {self.cache.dossier}/",
+            html.Div("Une archive SDD pèse plusieurs gigaoctets : on donne son "
+                     "chemin, on ne la téléverse pas. Tout reste sur le poste.",
                      style={"fontSize": "12px", "opacity": .6}),
 
+            html.Div([
+                dcc.Input(id="chemin", type="text", value=self.defaut,
+                          placeholder="/chemin/vers/SDD+xxxx.zip  (ou un dossier de .trf)",
+                          debounce=True,
+                          style={"flex": "1", "padding": "8px 10px", "fontSize": "13px",
+                                 "fontFamily": "ui-monospace, monospace",
+                                 "border": "1px solid rgba(128,128,128,.45)",
+                                 "borderRadius": "6px"}),
+                html.Button("Charger", id="charger", n_clicks=0,
+                            style={"padding": "8px 18px", "fontSize": "13px",
+                                   "cursor": "pointer", "borderRadius": "6px",
+                                   "border": "1px solid rgba(128,128,128,.45)",
+                                   "background": "#f4f4f5"}),
+            ], style={"display": "flex", "gap": "8px", "margin": "16px 0 6px"}),
+
+            dcc.Loading(html.Div(id="etat", style={"fontSize": "12px",
+                                                   "minHeight": "18px"})),
+
             html.Label("séance", style={"fontSize": "12px", "opacity": .7,
-                                        "marginTop": "18px", "display": "block"}),
-            dcc.Dropdown(id="seance", options=options,
-                         value=0 if options else None, clearable=False,
+                                        "marginTop": "14px", "display": "block"}),
+            dcc.Dropdown(id="seance", options=[], value=None, clearable=False,
+                         placeholder="charger une archive d'abord",
                          style={"fontFamily": "ui-monospace, monospace"}),
 
             html.H4("La séance", style={"marginTop": "24px"}),
@@ -204,7 +234,37 @@ class Visualiseur:
                   "background": "#fff", "color": "#1a1a1a", "minHeight": "100vh"})
 
     def _callbacks(self):
-        cache = self.cache
+
+        @self.app.callback(
+            Output("seance", "options"), Output("seance", "value"),
+            Output("etat", "children"),
+            Input("charger", "n_clicks"), Input("chemin", "value"),
+            prevent_initial_call=True)
+        def _charger(_clics, chemin):
+            """Construit ou relit le cache de l'archive demandée.
+
+            Le premier passage sur une vraie archive prend des minutes : le
+            navigateur attend, d'où le `dcc.Loading` autour de cet état. Les
+            suivants sont immédiats, le cache évitant tout décodage.
+            """
+            if not chemin:
+                return [], None, "Indiquer le chemin d'une archive SDD."
+            source = pathlib.Path(chemin.strip().strip('"').strip("'"))
+            if not source.exists():
+                return [], None, f"❌ introuvable : {source}"
+            try:
+                self.cache = CacheSeances(source, self.dossier)
+            except Exception as erreur:
+                self.cache = None
+                return [], None, f"❌ {type(erreur).__name__} : {erreur}"
+
+            seances = self.cache.seances()
+            options = [{"label": etiquette(s), "value": i}
+                       for i, s in enumerate(seances)]
+            machines = sorted({s["machine"] for s in seances})
+            return options, (0 if options else None), (
+                f"✅ {source.name} · {len(seances)} séance(s) · "
+                f"machine(s) {', '.join(machines)} · cache dans {self.dossier}/")
 
         @self.app.callback(
             Output("cartes", "children"), Output("details", "children"),
@@ -212,6 +272,9 @@ class Visualiseur:
             Output("onglets", "value"),
             Input("seance", "value"))
         def _seance(index):
+            if index is None or self.cache is None:
+                return [], "", go.Figure(), [], "0"
+            cache = self.cache
             s = cache.seances()[index]
             tables = cache.tables(index)
             debut = datetime.datetime.fromisoformat(s["debut"])
@@ -274,7 +337,9 @@ class Visualiseur:
             Output("entete_fichier", "children"),
             Input("seance", "value"), Input("onglets", "value"), Input("jeu", "value"))
         def _fichier(index, onglet, jeu):
-            tables = cache.tables(index)
+            if index is None or self.cache is None:
+                return [], [], ""
+            tables = self.cache.tables(index)
             f = tables[min(int(onglet or 0), len(tables) - 1)]
             table = f["table"]
 
