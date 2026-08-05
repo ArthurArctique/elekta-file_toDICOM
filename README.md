@@ -73,6 +73,7 @@ Dans `exploration/`, chacun documenté en tête de fichier.
 
 | Script | Rôle |
 |---|---|
+| **`main.py`** (à la racine) | **Toute la chaîne en un fichier**, quatre classes, indépendant des scripts ci-dessous : `python3 main.py plan.dcm "SDD+xxx.zip" --sortie delivres/` écrit un RT Plan « délivré » par séance correspondante. Demande `pymedphys` |
 | **`organiser_trf.py`** | Inventorie une archive SDD, reconstitue les séances. `--extraire` crée un dossier par séance, `--diagnostic` détaille les fichiers atypiques, `--filtre` cible un fichier |
 | **`lire_rtp.py`** | Décode un plan RTP Connect exporté par Mosaiq |
 | **`chercher_seances.py`** | Retrouve les séances d'un plan dans une archive. `--methode` explique les critères, `--detail` les déroule |
