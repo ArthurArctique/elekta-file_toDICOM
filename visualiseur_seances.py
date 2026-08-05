@@ -1,0 +1,309 @@
+"""Explore les séances d'une archive SDD dans le navigateur.
+
+    from visualiseur_seances import Visualiseur
+    Visualiseur("SDD+xxx.zip").lancer()          # puis http://127.0.0.1:8052
+
+Le découpage en séances est celui de `main.ArchiveTrf` — la classe est appelée,
+pas réimplémentée. Cette page n'est qu'une interface par-dessus.
+
+Le cache
+--------
+Décoder 400 TRF prend du temps. Au premier passage, l'archive est parcourue une
+fois puis un dossier `seances/` est écrit :
+
+    seances/index.json          le survol de chaque séance, pour le menu
+    seances/s0001/*.trf         les TRF de la séance, déjà extraits
+
+Aux lancements suivants, le menu se remplit depuis `index.json` sans rien
+décoder, et une séance choisie n'est décodée que quand on la demande — en
+relisant son dossier, sans rouvrir l'archive. Le cache est invalidé si le zip
+change de taille ou de date.
+
+⚠️ `seances/` contient des copies de données patient : à protéger comme les
+originaux. Le `.gitignore` du dépôt l'exclut déjà.
+"""
+
+import datetime
+import json
+import pathlib
+import sys
+import zipfile
+
+import numpy as np
+import plotly.graph_objects as go
+from dash import Dash, Input, Output, dash_table, dcc, html
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from main import COL_ETAT, COL_MU, PAS_S, ArchiveTrf  # noqa: E402
+
+TABLEAU = {
+    "style_cell": {"fontFamily": "ui-monospace, SFMono-Regular, monospace",
+                   "fontSize": "12px", "textAlign": "left", "padding": "5px 8px"},
+    "style_header": {"fontWeight": "600", "textTransform": "uppercase",
+                     "fontSize": "10px", "letterSpacing": ".05em"},
+    "style_table": {"overflowX": "auto"},
+}
+JEUX = {
+    "essentiel": ("Control point/Actual Value (None)", "Linac State/Actual Value (None)",
+                  "Step Dose/Actual Value (Mu)", "Actual Dose Rate/Actual Value (Mu/min)",
+                  "Step Gantry/Scaled Actual (deg)", "Step Collimator/Scaled Actual (deg)",
+                  "X1 Diaphragm/Scaled Actual (mm)", "X2 Diaphragm/Scaled Actual (mm)"),
+}
+
+
+class CacheSeances:
+    """Le dossier `seances/` : découpe une fois, relit ensuite.
+
+    L'unique appel coûteux — `ArchiveTrf(zip)` — n'a lieu qu'à la construction
+    du cache. Ensuite chaque séance est un simple dossier de `.trf`, que
+    `ArchiveTrf` sait relire aussi.
+    """
+
+    def __init__(self, archive, dossier="seances"):
+        self.archive = pathlib.Path(archive)
+        self.dossier = pathlib.Path(dossier)
+        self.index = self._charger() or self._construire()
+
+    def _signature(self):
+        etat = self.archive.stat()
+        return {"archive": str(self.archive.resolve()),
+                "octets": etat.st_size, "modifie": int(etat.st_mtime)}
+
+    def _charger(self):
+        fichier = self.dossier / "index.json"
+        if not fichier.exists():
+            return None
+        contenu = json.loads(fichier.read_text(encoding="utf-8"))
+        if contenu.get("signature") != self._signature():
+            print("  cache périmé (l'archive a changé) : reconstruction")
+            return None
+        print(f"  cache lu : {len(contenu['seances'])} séance(s), aucun décodage")
+        return contenu
+
+    def _construire(self):
+        print(f"  découpage de {self.archive.name} — long au premier passage…")
+        seances = ArchiveTrf(self.archive).seances()
+        self.dossier.mkdir(parents=True, exist_ok=True)
+
+        octets = {}
+        with zipfile.ZipFile(self.archive) as zf:
+            for nom in zf.namelist():
+                if nom.lower().endswith(".trf"):
+                    octets[nom] = zf.read(nom)
+
+        resumes = []
+        for rang, s in enumerate(seances, start=1):
+            sous = self.dossier / f"s{rang:04d}"
+            sous.mkdir(exist_ok=True)
+            noms = []
+            for f in s["fichiers"]:
+                cible = sous / pathlib.PurePath(f["nom"]).name
+                if f["nom"] in octets:
+                    cible.write_bytes(octets[f["nom"]])
+                noms.append(cible.name)
+            resumes.append({
+                "rang": rang, "dossier": sous.name,
+                "machine": s["machine"], "champ": s["champ"],
+                "debut": s["debut"].isoformat(sep=" ", timespec="seconds"),
+                "fin": s["fin"].isoformat(sep=" ", timespec="seconds"),
+                "mu": round(s["mu"], 1), "etat_final": s["etat_final"],
+                "nb_fichiers": len(s["fichiers"]), "fichiers": noms,
+            })
+
+        contenu = {"signature": self._signature(), "seances": resumes}
+        (self.dossier / "index.json").write_text(
+            json.dumps(contenu, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"  {len(resumes)} séance(s) écrite(s) dans {self.dossier}/")
+        print("  ⚠ copies de données patient : à protéger comme les originaux.")
+        return contenu
+
+    def seances(self):
+        return self.index["seances"]
+
+    def tables(self, rang):
+        """Les tables décodées d'une séance, à la demande.
+
+        Relit le dossier de la séance avec la même classe que l'archive : c'est
+        le décodage de `main.ArchiveTrf`, jamais une seconde implémentation.
+        """
+        resume = self.seances()[rang]
+        lecture = ArchiveTrf(self.dossier / resume["dossier"])
+        return sorted(lecture._fichiers, key=lambda f: f["debut"])
+
+
+def etiquette(s):
+    """Une ligne du menu déroulant : date · champ · MU."""
+    return (f"{s['debut'][:16]}  ·  {s['champ'][:22]:<22}  ·  {s['mu']:>8.1f} MU"
+            + ("" if s["nb_fichiers"] == 1 else f"  ·  {s['nb_fichiers']} fichiers"))
+
+
+def carte(titre, valeur, note=""):
+    return html.Div([
+        html.Div(titre, style={"fontSize": "11px", "textTransform": "uppercase",
+                               "letterSpacing": ".06em", "opacity": .6}),
+        html.Div(valeur, style={"fontSize": "22px", "fontWeight": 600, "margin": "2px 0"}),
+        html.Div(note, style={"fontSize": "11px", "opacity": .55}),
+    ], style={"padding": "10px 14px", "border": "1px solid rgba(128,128,128,.35)",
+              "borderRadius": "8px", "minWidth": "140px", "flex": "1"})
+
+
+class Visualiseur:
+    """La page : un menu de séances, les infos de la séance, les TRF en détail."""
+
+    def __init__(self, archive, dossier="seances", port=8052):
+        self.cache = CacheSeances(archive, dossier)
+        self.port = port
+        self.app = Dash(__name__, title="Séances")
+        self.app.layout = self._mise_en_page()
+        self._callbacks()
+
+    def _mise_en_page(self):
+        options = [{"label": etiquette(s), "value": i}
+                   for i, s in enumerate(self.cache.seances())]
+        return html.Div([
+            html.H2("Séances de l'archive", style={"marginBottom": "2px"}),
+            html.Div(f"{self.cache.archive.name} · {len(options)} séance(s) · "
+                     f"cache dans {self.cache.dossier}/",
+                     style={"fontSize": "12px", "opacity": .6}),
+
+            html.Label("séance", style={"fontSize": "12px", "opacity": .7,
+                                        "marginTop": "18px", "display": "block"}),
+            dcc.Dropdown(id="seance", options=options,
+                         value=0 if options else None, clearable=False,
+                         style={"fontFamily": "ui-monospace, monospace"}),
+
+            html.H4("La séance", style={"marginTop": "24px"}),
+            html.Div(id="cartes", style={"display": "flex", "gap": "10px"}),
+            html.Div(id="details", style={"marginTop": "14px"}),
+            dcc.Graph(id="dose"),
+
+            html.H4("Les fichiers", style={"marginTop": "24px"}),
+            html.Div("Un onglet par TRF de la séance. Le tableau montre les "
+                     "colonnes telles que la machine les a écrites.",
+                     style={"fontSize": "12px", "opacity": .65}),
+            dcc.Tabs(id="onglets", value="0"),
+            html.Div([
+                dcc.RadioItems(id="jeu", value="essentiel", inline=True,
+                               options=[{"label": "  colonnes essentielles", "value": "essentiel"},
+                                        {"label": "  lames Y1", "value": "y1"},
+                                        {"label": "  lames Y2", "value": "y2"},
+                                        {"label": "  erreurs de position", "value": "err"},
+                                        {"label": "  tout", "value": "tout"}],
+                               style={"fontSize": "12px"}),
+            ], style={"margin": "12px 0 6px"}),
+            html.Div(id="entete_fichier",
+                     style={"fontSize": "12px", "opacity": .7, "margin": "6px 0"}),
+            dash_table.DataTable(id="table", page_size=20, **TABLEAU),
+
+            html.P("Lu en local, rien n'est transmis. Le dossier de cache "
+                   "contient des copies de données patient.",
+                   style={"fontSize": "11px", "opacity": .55, "marginTop": "26px"}),
+        ], style={"maxWidth": "1150px", "margin": "0 auto", "padding": "24px",
+                  "fontFamily": "system-ui, -apple-system, sans-serif",
+                  "background": "#fff", "color": "#1a1a1a", "minHeight": "100vh"})
+
+    def _callbacks(self):
+        cache = self.cache
+
+        @self.app.callback(
+            Output("cartes", "children"), Output("details", "children"),
+            Output("dose", "figure"), Output("onglets", "children"),
+            Output("onglets", "value"),
+            Input("seance", "value"))
+        def _seance(index):
+            s = cache.seances()[index]
+            tables = cache.tables(index)
+            debut = datetime.datetime.fromisoformat(s["debut"])
+            fin = datetime.datetime.fromisoformat(s["fin"])
+            echantillons = sum(len(f["table"]) for f in tables)
+
+            cartes = [
+                carte("MU délivrées", f"{s['mu']:.1f}"),
+                carte("fichiers", str(s["nb_fichiers"])),
+                carte("échantillons", f"{echantillons}",
+                      f"{echantillons * PAS_S:.0f} s enregistrées"),
+                carte("durée", f"{(fin - debut).total_seconds():.0f} s",
+                      "de bout en bout"),
+                carte("état final", s["etat_final"]),
+            ]
+
+            lignes = [
+                ("machine", s["machine"]),
+                ("champ", s["champ"]),
+                ("début (UTC)", s["debut"]),
+                ("fin (UTC)", s["fin"]),
+                ("MU par fichier", " + ".join(f"{f['mu']:.1f}" for f in tables)),
+                ("états finaux", " → ".join(f["etat_final"] for f in tables)),
+                ("dossier de cache", f"{cache.dossier}/{s['dossier']}"),
+            ]
+            # Un creux entre deux fichiers, c'est le temps d'arrêt de la séance.
+            if len(tables) > 1:
+                creux = [(tables[i + 1]["debut"] - tables[i]["fin"]).total_seconds()
+                         for i in range(len(tables) - 1)]
+                lignes.append(("interruptions",
+                               " · ".join(f"{c:.0f} s" for c in creux)))
+            details = dash_table.DataTable(
+                data=[{"champ": a, "valeur": str(b)} for a, b in lignes],
+                columns=[{"name": c, "id": c} for c in ("champ", "valeur")],
+                **TABLEAU)
+
+            figure = go.Figure()
+            decalage = 0.0
+            for f in tables:
+                mu = f["table"][COL_MU].values
+                d = np.diff(mu, prepend=0.0)
+                d[d < 0] = 0
+                continu = np.cumsum(d) + decalage
+                figure.add_trace(go.Scatter(
+                    x=np.arange(len(continu)) * PAS_S, y=continu,
+                    mode="lines", name=f["nom"][-22:]))
+                decalage = float(continu[-1])
+            figure.update_layout(
+                xaxis_title="temps enregistré (s)", yaxis_title="MU cumulées",
+                height=280, template="plotly_white",
+                margin={"l": 60, "r": 20, "t": 20, "b": 45},
+                legend={"orientation": "h", "y": -0.3})
+
+            onglets = [dcc.Tab(label=f["nom"][-24:], value=str(i))
+                       for i, f in enumerate(tables)]
+            return cartes, details, figure, onglets, "0"
+
+        @self.app.callback(
+            Output("table", "data"), Output("table", "columns"),
+            Output("entete_fichier", "children"),
+            Input("seance", "value"), Input("onglets", "value"), Input("jeu", "value"))
+        def _fichier(index, onglet, jeu):
+            tables = cache.tables(index)
+            f = tables[min(int(onglet or 0), len(tables) - 1)]
+            table = f["table"]
+
+            if jeu == "essentiel":
+                colonnes = [c for c in JEUX["essentiel"] if c in table.columns]
+            elif jeu == "y1":
+                colonnes = [c for c in table.columns if c.startswith("Y1 Leaf")
+                            and "Scaled Actual" in c]
+            elif jeu == "y2":
+                colonnes = [c for c in table.columns if c.startswith("Y2 Leaf")
+                            and "Scaled Actual" in c]
+            elif jeu == "err":
+                colonnes = [c for c in table.columns if "Positional Error" in c]
+            else:
+                colonnes = list(table.columns)
+
+            extrait = table[colonnes].head(400).round(2)
+            data = [{"t (s)": round(i * PAS_S, 2), **ligne}
+                    for i, ligne in zip(extrait.index, extrait.to_dict("records"))]
+            entetes = [{"name": "t (s)", "id": "t (s)"}] + \
+                      [{"name": c.replace("/", " / "), "id": c} for c in colonnes]
+            resume = (f"{f['nom']} · {len(table)} échantillons · "
+                      f"{len(table.columns)} colonnes · {f['mu']:.1f} MU · "
+                      f"fin {f['fin']:%Y-%m-%d %H:%M:%S} UTC · "
+                      f"état final « {f['etat_final']} »"
+                      + (f" · {len(colonnes)} colonne(s) affichée(s), "
+                         "400 premières lignes" if len(table) > 400 else ""))
+            return data, entetes, resume
+
+    def lancer(self, debug=False):
+        print(f"  http://127.0.0.1:{self.port}")
+        self.app.run(debug=debug, port=self.port)

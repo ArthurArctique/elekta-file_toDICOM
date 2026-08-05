@@ -1,6 +1,7 @@
 """La chaîne complète en un fichier : zip de TRF → séances → RT Plan « délivré ».
 
-    python3 main.py plan.dcm "SDD+xxx.zip" --sortie delivres/
+    from main import Chaine
+    Chaine("plan.dcm", "SDD+xxx.zip", sortie="delivres/").executer()
 
 Pour chaque séance de l'archive qui correspond au plan, écrit un RT Plan
 **dérivé** : la grille du plan est conservée — mêmes faisceaux, mêmes points de
@@ -58,7 +59,6 @@ Elles sont réelles et documentées plutôt que masquées.
    traitement. Une médiane peut néanmoins diluer quelques lames très fausses.
 """
 
-import argparse
 import copy
 import datetime
 import pathlib
@@ -113,6 +113,7 @@ class ArchiveTrf:
     def __init__(self, source):
         self.source = pathlib.Path(source)
         self._fichiers = list(self._lire_tout())
+        self._seances = None
 
     # ---- lecture ----
 
@@ -187,6 +188,8 @@ class ArchiveTrf:
         autres coupures (machine, champ, écart de temps) séparent des
         traitements distincts.
         """
+        if self._seances is not None:
+            return self._seances
         seances, courante = [], None
         for f in sorted(self._fichiers, key=lambda x: (x["machine"], x["debut"])):
             if f["mu"] < 1.0:
@@ -209,6 +212,7 @@ class ArchiveTrf:
                 courante["mu"] += f["mu"]
                 courante["fin"] = f["fin"]
                 courante["etat_final"] = f["etat_final"]
+        self._seances = seances
         return seances
 
     # ---- appariement ----
@@ -219,7 +223,12 @@ class ArchiveTrf:
 
         Les remises à zéro internes sont neutralisées (cumul des écarts
         positifs) et chaque fragment est décalé du total des précédents.
+
+        Mémorisé sur la séance : l'appariement le calcule pour toutes les
+        séances, la substitution le redemande pour celles qui sont retenues.
         """
+        if "_recollee" in seance:
+            return seance["_recollee"]
         mus, lames, decalage = [], [], 0.0
         for f in seance["fichiers"]:
             table = f["table"]
@@ -233,7 +242,8 @@ class ArchiveTrf:
             mus.append(continu + decalage)
             lames.append(np.stack([y1, y2], axis=2))
             decalage += float(continu[-1])
-        return np.concatenate(mus), np.concatenate(lames)
+        seance["_recollee"] = (np.concatenate(mus), np.concatenate(lames))
+        return seance["_recollee"]
 
     def _empreinte(self, seance, fractions):
         """Les lames de la séance aux fractions de MU demandées."""
@@ -290,6 +300,7 @@ class LecteurRtplan:
                 raise SystemExit(f"{chemin} : {requis} absente, "
                                  "ce n'est pas un RT Plan exploitable.")
         self.chemin = pathlib.Path(chemin)
+        self._grilles = {}
         self._verifier_geometrie()
 
     def _verifier_geometrie(self):
@@ -331,6 +342,8 @@ class LecteurRtplan:
 
     def grille(self, fraction=1):
         """MU cumulées de chaque point de contrôle, faisceaux bout à bout."""
+        if fraction in self._grilles:
+            return self._grilles[fraction]
         metersets = self.mu_par_faisceau(fraction)
         faisceaux, decalage = [], 0.0
         for faisceau in self.ds.BeamSequence:
@@ -346,6 +359,7 @@ class LecteurRtplan:
                 "cibles": decalage + metersets[numero] * poids / finale,
             })
             decalage += metersets[numero]
+        self._grilles[fraction] = faisceaux
         return faisceaux
 
     def _lames_depliees(self, fraction=1):
@@ -586,22 +600,3 @@ class Chaine:
             print("  UID neufs · UNAPPROVED · plans dérivés pour analyse, à tenir "
                   "hors de toute route DICOM clinique")
         return ecrits
-
-
-def main():
-    analyseur = argparse.ArgumentParser(
-        description="Écrit un RT Plan « délivré » par séance d'une archive de TRF.",
-        epilog="Les fichiers produits sont des plans derives, pour analyse seulement.")
-    analyseur.add_argument("plan", help="RT Plan DICOM de référence")
-    analyseur.add_argument("source", help="archive SDD (.zip) ou dossier de .trf")
-    analyseur.add_argument("--sortie", help="dossier de sortie (défaut : celui du plan)")
-    analyseur.add_argument("--fraction", type=int, default=1,
-                           help="groupe de fractions du plan (défaut : 1)")
-    args = analyseur.parse_args()
-
-    ecrits = Chaine(args.plan, args.source, args.sortie, args.fraction).executer()
-    return 0 if ecrits else 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
