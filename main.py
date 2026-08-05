@@ -70,7 +70,8 @@ import zipfile
 import numpy as np
 import pydicom
 from pydicom.dataset import FileMetaDataset
-from pydicom.uid import ImplicitVRLittleEndian, generate_uid
+from pydicom.uid import (ExplicitVRBigEndian, ExplicitVRLittleEndian,
+                         ImplicitVRLittleEndian, generate_uid)
 
 # Filtre restreint à l'import de pymedphys, qui est bavard au chargement. Un
 # filtre global masquerait aussi les avertissements de pydicom sur les valeurs
@@ -280,8 +281,14 @@ class LecteurRtplan:
             self.ds = pydicom.dcmread(chemin, force=True)
             print(f"  ⚠ {pathlib.Path(chemin).name} : lecture forcée, "
                   "préambule ou méta-en-tête absent", file=sys.stderr)
-        if "BeamSequence" not in self.ds:
-            raise SystemExit(f"{chemin} n'est pas un RT Plan.")
+        classe = getattr(self.ds, "SOPClassUID", None)
+        if classe is not None and classe != EcrivainDicom.CLASSE_RT_PLAN:
+            raise SystemExit(f"{chemin} : SOP Class {classe}, "
+                             "attendu RT Plan Storage.")
+        for requis in ("BeamSequence", "FractionGroupSequence"):
+            if requis not in self.ds:
+                raise SystemExit(f"{chemin} : {requis} absente, "
+                                 "ce n'est pas un RT Plan exploitable.")
         self.chemin = pathlib.Path(chemin)
         self._verifier_geometrie()
 
@@ -357,6 +364,13 @@ class LecteurRtplan:
         mus, lames = [], []
         for bloc in self.grille(fraction):
             faisceau = par_numero[bloc["numero"]]
+            # Vrai par construction — `cibles` vient de cette ControlPointSequence
+            # — mais posé explicitement : c'est le dernier appariement positionnel
+            # du fichier, et une évolution de `grille()` le romprait en silence.
+            if len(faisceau.ControlPointSequence) != len(bloc["cibles"]):
+                raise SystemExit(
+                    f"Faisceau {bloc['numero']} : {len(faisceau.ControlPointSequence)} "
+                    f"points de contrôle pour {len(bloc['cibles'])} cibles de MU.")
             courant = None
             for cp, cible in zip(faisceau.ControlPointSequence, bloc["cibles"]):
                 for item in getattr(cp, "BeamLimitingDevicePositionSequence", []):
@@ -391,22 +405,43 @@ class EcrivainDicom:
 
     CLASSE_RT_PLAN = "1.2.840.10008.5.1.4.1.1.481.5"
 
+    # Politique d'identité, explicite parce qu'elle engage :
+    #   SOPInstanceUID              remplacé   — c'est un autre document
+    #   SeriesInstanceUID           remplacé   — il n'appartient pas à la série du plan
+    #   MediaStorage*               synchronisés sur les deux ci-dessus
+    #   StudyInstanceUID            CONSERVÉ   — le dérivé reste dans l'étude du
+    #                                            patient, ce qui le rend traçable
+    #                                            mais aussi associable au dossier
+    #   SOPClassUID                 conservé   — ça reste un RT Plan
+    #   FrameOfReferenceUID         conservé   — même repère géométrique
+
     def ecrire(self, ds, chemin, description=""):
         nouvel_uid = generate_uid()
         ds.SOPInstanceUID = nouvel_uid
         ds.SeriesInstanceUID = generate_uid()
 
-        # Le méta-en-tête porte une seconde copie de l'UID. Sans ces lignes, le
-        # fichier sort avec un UID neuf dans le dataset et **celui du plan
-        # d'origine** dans le méta : l'identité neuve ne protège plus de rien.
-        # Invisible sur les plans publics, qui n'ont aucun méta-en-tête.
+        # Le méta-en-tête porte une seconde copie de l'UID et de la SOP Class.
+        # Sans ces lignes, le fichier sort avec un UID neuf dans le dataset et
+        # **celui du plan d'origine** dans le méta : l'identité du document
+        # devient incohérente. Invisible sur les plans publics, qui n'ont aucun
+        # méta-en-tête du tout.
         if getattr(ds, "file_meta", None) is None:
             ds.file_meta = FileMetaDataset()
         ds.file_meta.MediaStorageSOPInstanceUID = nouvel_uid
         ds.file_meta.MediaStorageSOPClassUID = getattr(
             ds, "SOPClassUID", self.CLASSE_RT_PLAN)
         if "TransferSyntaxUID" not in ds.file_meta:
-            ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+            # Aucun méta d'origine : on déclare l'encodage que pydicom a
+            # effectivement employé à la lecture plutôt qu'une valeur arbitraire.
+            # `original_encoding` vaut (implicit_VR, little_endian).
+            implicite, petit_boutiste = getattr(
+                ds, "original_encoding", (True, True))
+            if implicite and petit_boutiste:
+                ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+            elif petit_boutiste:
+                ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+            else:
+                ds.file_meta.TransferSyntaxUID = ExplicitVRBigEndian
 
         if "RTPlanLabel" in ds:
             ds.RTPlanLabel = (str(ds.RTPlanLabel) or "")[:10] + "_DEL"
@@ -418,7 +453,32 @@ class EcrivainDicom:
         # marqueur « DICM ». Sans lui le fichier n'est pas conforme Part 10 et
         # ne se relit qu'avec `force=True` — y compris par les visionneuses.
         ds.save_as(str(chemin), enforce_file_format=True)
+        self._controler(chemin, nouvel_uid)
         return chemin
+
+    @staticmethod
+    def _controler(chemin, uid_attendu):
+        """Relit le fichier écrit et vérifie son identité.
+
+        Contrôler l'objet en mémoire ne prouve rien sur le fichier : c'est
+        précisément ainsi qu'un premier correctif est passé pour bon alors que
+        le préambule manquait encore. La relecture se fait donc **sans**
+        `force=True`, ce qui vérifie du même coup la conformité Part 10.
+        """
+        relu = pydicom.dcmread(str(chemin))
+        meta = relu.file_meta
+        if relu.SOPInstanceUID != uid_attendu:
+            raise SystemExit(f"{chemin} : SOPInstanceUID écrit incohérent.")
+        if meta.MediaStorageSOPInstanceUID != relu.SOPInstanceUID:
+            raise SystemExit(f"{chemin} : méta-en-tête et dataset en désaccord "
+                             "sur le SOP Instance UID.")
+        if meta.MediaStorageSOPClassUID != relu.SOPClassUID:
+            raise SystemExit(f"{chemin} : méta-en-tête et dataset en désaccord "
+                             "sur la SOP Class.")
+        syntaxe = meta.TransferSyntaxUID
+        if relu.original_encoding != (syntaxe.is_implicit_VR, syntaxe.is_little_endian):
+            raise SystemExit(f"{chemin} : TransferSyntaxUID déclaré "
+                             f"({syntaxe.name}) ≠ encodage réellement écrit.")
 
 
 class Chaine:
