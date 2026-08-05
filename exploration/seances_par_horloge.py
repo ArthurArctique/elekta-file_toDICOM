@@ -31,8 +31,19 @@ fichier.
 En moins bien : les fichiers de **version 1 n'ont pas de compteur** et sont
 ignorés ici, alors qu'`organiser_trf` les traite.
 
-Ce script applique l'idée **telle quelle**, sans garde-fou, et signale où elle
-casse plutôt que de rattraper en douce. C'est ce qui permet de juger.
+Les garde-fous
+--------------
+Couper aux seuls « Terminated Ok » ne suffit pas : quand une délivrance se
+termine sans — faute, abandon, machine éteinte —, le patient suivant est
+recollé au précédent. Deux garde-fous ferment donc aussi une séance, le
+**changement de nom de champ** et l'**écart de temps**.
+
+Comparer les MU d'un fichier au suivant ne marcherait pas : sur une séance
+interrompue légitime, les fragments consécutifs font 26,5 puis 41,7 puis 314,4
+puis 43,8 MU. Un test sur l'écart de MU la couperait en quatre.
+
+`--brut` retire les garde-fous et applique l'idée telle quelle, pour voir ce
+qu'elle donne seule.
 """
 
 import argparse
@@ -146,21 +157,53 @@ def origine_horloge(bloc):
     return float(np.median(ancrages)), float(np.std(ancrages))
 
 
-def decouper(bloc):
-    """Coupe la ligne de temps après chaque « Terminated Ok ».
+def decouper(bloc, ecart_max_ms=1_800_000, brut=False):
+    """Coupe la ligne de temps, et dit pourquoi à chaque fois.
 
-    La coupure tombe au **dernier** échantillon de la salve : la machine écrit
-    cet état sur une dizaine d'échantillons consécutifs en fin de délivrance,
-    pas sur un seul.
+    Coupure principale : après chaque salve de « Terminated Ok ». Elle tombe au
+    **dernier** échantillon de la salve, la machine écrivant cet état sur une
+    dizaine d'échantillons consécutifs en fin de délivrance.
+
+    Deux garde-fous, sauf en mode `brut` :
+
+    **Changement de nom de champ.** Quand une délivrance se termine sans
+    « Terminated Ok » — faute, abandon, machine éteinte —, la coupure n'a pas
+    lieu et le patient suivant est recollé au précédent. Le nom de champ est le
+    seul signal direct de ce recollement.
+
+    Comparer les MU d'un fichier au suivant, en revanche, **ne marche pas** :
+    mesuré sur une séance interrompue légitime, les fragments consécutifs font
+    26,5 puis 41,7 puis 314,4 puis 43,8 MU. Un test sur l'écart de MU couperait
+    cette séance en quatre.
+
+    **Écart de temps.** Deux délivrances du même champ à des heures éloignées
+    sont deux séances, même si la première n'a pas conclu. Ici l'écart est
+    *mesuré* sur le compteur, pas reconstruit.
     """
-    etat = bloc["etat"]
+    etat, ms, source = bloc["etat"], bloc["ms"], bloc["source"]
     ok = etat == ETAT_TERMINE_OK
-    # dernier échantillon de chaque salve de « Terminated Ok »
-    fins = np.where(ok & ~np.append(ok[1:], False))[0]
-    bornes = list(fins + 1)
-    if not bornes or bornes[-1] != len(etat):
-        bornes.append(len(etat))
-    return [(0 if i == 0 else bornes[i - 1], b) for i, b in enumerate(bornes)]
+    coupures = {}
+
+    for i in np.where(ok & ~np.append(ok[1:], False))[0]:
+        coupures[int(i)] = "Terminated Ok"
+
+    if not brut:
+        rang_du_champ = {}
+        codes = np.array([rang_du_champ.setdefault(f["champ"], len(rang_du_champ))
+                          for f in bloc["fichiers"]], dtype=np.int32)
+        par_echantillon = codes[source]
+        for i in np.where(par_echantillon[:-1] != par_echantillon[1:])[0]:
+            coupures.setdefault(int(i), "champ différent")
+        for i in np.where(np.diff(ms) > ecart_max_ms)[0]:
+            coupures.setdefault(int(i), f"écart > {ecart_max_ms / 60000:.0f} min")
+
+    segments, debut = [], 0
+    for i in sorted(coupures):
+        segments.append((debut, i + 1, coupures[i]))
+        debut = i + 1
+    if debut < len(etat):
+        segments.append((debut, len(etat), "fin de l'archive"))
+    return segments
 
 
 def mu_du_segment(mu):
@@ -172,7 +215,7 @@ def mu_du_segment(mu):
     return float(sum(mu[i] for i in ruptures) + mu[-1])
 
 
-def decrire(bloc, machine, debut, fin, origine, numero):
+def decrire(bloc, machine, debut, fin, origine, numero, cloture=""):
     """Résume une tranche de la ligne de temps."""
     ms, etat, mu, source = (bloc[c][debut:fin] for c in ("ms", "etat", "mu", "source"))
     rangs = sorted(set(int(r) for r in source))
@@ -200,6 +243,7 @@ def decrire(bloc, machine, debut, fin, origine, numero):
 
     return {
         "seance": numero,
+        "cloture": cloture,
         "machine": machine,
         "champ": " | ".join(champs),
         "debut": horloge(int(ms[0])),
@@ -337,10 +381,13 @@ def main():
     analyseur.add_argument("--sortie", metavar="DOSSIER",
                            help="écrit seances_horloge.csv")
     analyseur.add_argument("--filtre", help="ne garder que les .trf dont le nom contient ceci")
+    analyseur.add_argument("--brut", action="store_true",
+                           help="applique l'idée sans garde-fou : coupe uniquement "
+                                "aux « Terminated Ok »")
     analyseur.add_argument("--comparer", action="store_true",
                            help="confronte le résultat à celui d'organiser_trf.py")
     analyseur.add_argument("--ecart-max", type=float, default=1800,
-                           help="pour la comparaison seulement (défaut : 1800 s)")
+                           help="écart au-delà duquel une séance se ferme (défaut : 1800 s)")
     analyseur.add_argument("--seuil-complet", type=float, default=0.97,
                            help="pour la comparaison seulement (défaut : 0.97)")
     args = analyseur.parse_args()
@@ -366,11 +413,11 @@ def main():
             print(f"  ⚠ {len(recul)} recul(s) du compteur — l'horloge n'est pas "
                   "monotone, le postulat de la méthode ne tient pas")
 
-        for debut, fin in decouper(bloc):
+        for debut, fin, cloture in decouper(bloc, args.ecart_max * 1000, args.brut):
             if fin - debut < 2:
                 continue
             numero += 1
-            seances.append(decrire(bloc, machine, debut, fin, origine, numero))
+            seances.append(decrire(bloc, machine, debut, fin, origine, numero, cloture))
 
     doutes = [s for s in seances if s["doute"]]
     print(f"\n{len(seances)} séance(s) · {len(doutes)} avec doute")
@@ -381,8 +428,8 @@ def main():
 
     for s in seances[:20]:
         print(f"  séance {s['seance']:>4} · {s['debut'][:16]} · {s['duree_s']:>7.1f} s "
-              f"· {s['nb_fichiers']} fich. · {s['mu']:>7.1f} MU · {s['champ'][:20]:<20} "
-              f"· {s['etat_final']}")
+              f"· {s['nb_fichiers']} fich. · {s['mu']:>7.1f} MU · {s['champ'][:18]:<18} "
+              f"· clôt sur {s['cloture']}")
         if s["doute"]:
             print(f"        ⚠ {s['doute']}")
     if len(seances) > 20:
