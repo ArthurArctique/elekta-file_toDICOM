@@ -231,25 +231,101 @@ def comparer(seances, sources, filtre, ecart_max, seuil_complet):
     reference = [s for s in regrouper(resumes, ecart_max, seuil_complet)
                  if s.get("issue") != "sans_dose"]
 
-    # Une séance est identifiée par l'ensemble de ses fichiers.
-    ici = {frozenset(s["fichiers"].split(" | ")) for s in seances}
-    la = {frozenset(s["fichiers"].split(" | ")) for s in reference}
+    # La comparaison n'a de sens que sur les fichiers vus par les DEUX méthodes :
+    # l'horloge ignore les encodages v1, qui paraîtraient sinon « perdus ».
+    vus_ici = {f for s in seances for f in s["fichiers"].split(" | ")}
+    vus_la = {f for s in reference for f in s["fichiers"].split(" | ")}
+    communs = vus_ici & vus_la
+
+    ici = [frozenset(s["fichiers"].split(" | ")) & communs for s in seances]
+    la = [frozenset(s["fichiers"].split(" | ")) & communs for s in reference]
+    ici = [c for c in ici if c]
+    la = [c for c in la if c]
 
     print(f"\n{'=' * 66}\nCOMPARAISON AVEC organiser_trf.py\n{'=' * 66}")
-    print(f"  par l'horloge    : {len(seances)} séance(s)")
-    print(f"  par les fichiers : {len(reference)} séance(s)")
-    print(f"  compositions identiques : {len(ici & la)}")
-    seulement_ici = ici - la
-    seulement_la = la - ici
-    for etiquette, ensemble in (("seulement par l'horloge", seulement_ici),
-                                ("seulement par les fichiers", seulement_la)):
-        if ensemble:
-            print(f"\n  {len(ensemble)} {etiquette} :")
-            for composition in sorted(ensemble, key=len)[:8]:
-                noms = sorted(composition)
-                print(f"    {len(noms)} fichier(s) : "
-                      + ", ".join(n.split('::')[-1][-26:] for n in noms[:4])
-                      + (" …" if len(noms) > 4 else ""))
+    print(f"  fichiers vus par l'horloge : {len(vus_ici)} · par organiser_trf : "
+          f"{len(vus_la)} · communs : {len(communs)}")
+    if vus_la - vus_ici:
+        print(f"    {len(vus_la - vus_ici)} fichier(s) hors comparaison "
+              "(sans horloge, encodage v1)")
+    print(f"  séances sur les fichiers communs : {len(ici)} par l'horloge, "
+          f"{len(la)} par organiser_trf")
+
+    comptes, exemples = qualifier(ici, la)
+
+    print("\n  NATURE DES DÉSACCORDS")
+    for genre, n in comptes.most_common():
+        print(f"    {n:>5}  {genre}")
+        if genre != "identiques":
+            for fichiers in exemples[genre]:
+                print("             "
+                      + ", ".join(f.split("::")[-1][-24:] for f in fichiers[:4])
+                      + (" …" if len(fichiers) > 4 else ""))
+
+
+def qualifier(ici, la):
+    """Classe les désaccords entre deux découpages du même lot de fichiers.
+
+    Chaque découpage est une liste d'ensembles de fichiers. On construit les
+    composantes connexes du graphe qui relie une séance d'un côté à celles de
+    l'autre avec lesquelles elle partage au moins un fichier : une composante
+    est un groupe de fichiers que les deux méthodes se disputent. Sa forme dit
+    la nature du désaccord — 3 contre 1 signifie que la première découpe ce que
+    la seconde garde entier.
+    """
+    appartenance = {}
+    for rang, composition in enumerate(la):
+        for f in composition:
+            appartenance[f] = rang
+    lien = collections.defaultdict(set)
+    for rang, composition in enumerate(ici):
+        for f in composition:
+            if f in appartenance:
+                lien[rang].add(appartenance[f])
+    inverse = collections.defaultdict(set)
+    for a, bs in lien.items():
+        for b in bs:
+            inverse[b].add(a)
+
+    vus, familles = set(), []
+    for depart in range(len(ici)):
+        if depart in vus:
+            continue
+        pile, cote_ici, cote_la = [("ici", depart)], set(), set()
+        while pile:
+            cote, rang = pile.pop()
+            if cote == "ici":
+                if rang in cote_ici:
+                    continue
+                cote_ici.add(rang)
+                pile += [("la", r) for r in lien.get(rang, ())]
+            else:
+                if rang in cote_la:
+                    continue
+                cote_la.add(rang)
+                pile += [("ici", r) for r in inverse.get(rang, ())]
+        vus |= cote_ici
+        familles.append((cote_ici, cote_la))
+
+    comptes = collections.Counter()
+    exemples = collections.defaultdict(list)
+    for cote_ici, cote_la in familles:
+        n, m = len(cote_ici), len(cote_la)
+        if n == 1 and m == 1:
+            genre = ("identiques" if ici[next(iter(cote_ici))] == la[next(iter(cote_la))]
+                     else "même groupe, composition différente")
+        elif m == 1:
+            genre = f"l'horloge DÉCOUPE ce qu'organiser_trf garde entier ({n} contre 1)"
+        elif n == 1:
+            genre = f"l'horloge FUSIONNE ce qu'organiser_trf sépare (1 contre {m})"
+        else:
+            genre = f"redécoupage croisé ({n} contre {m})"
+        comptes[genre] += 1
+        if len(exemples[genre]) < 3:
+            fichiers = sorted(set().union(*[ici[r] for r in cote_ici]))
+            exemples[genre].append(fichiers)
+
+    return comptes, exemples
 
 
 def main():
