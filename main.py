@@ -2,9 +2,11 @@
 
     python3 main.py plan.dcm "SDD+xxx.zip" --sortie delivres/
 
-Pour chaque séance de l'archive qui correspond au plan, écrit un DICOM ayant la
-structure exacte du plan — mêmes faisceaux, mêmes points de contrôle — mais les
-positions de lames, de mâchoires, les angles et les MU que la machine a relevés.
+Pour chaque séance de l'archive qui correspond au plan, écrit un RT Plan
+**dérivé** : la grille du plan est conservée — mêmes faisceaux, mêmes points de
+contrôle — et les trajectoires relevées par la machine y sont rééchantillonnées.
+Les MU totales viennent du log ; elles sont ensuite réparties entre les
+faisceaux **au prorata du plan**, pas relevées faisceau par faisceau (limite 1).
 
 ⚠️ Les fichiers produits sont des RT Plan dérivés, destinés à l'analyse. UID
 neufs et ApprovalStatus UNAPPROVED les distinguent du plan d'origine, mais ce
@@ -30,8 +32,11 @@ Elles sont réelles et documentées plutôt que masquées.
 
 1. **Les MU par faisceau sont réparties au prorata du plan.** Le facteur
    `MU délivrées / MU prévues` est global : si un seul faisceau a été écourté,
-   l'écart est étalé sur tous. Retrouver la vraie répartition demanderait
-   d'apparier les faisceaux du log à ceux du plan, ce qui n'est pas fait.
+   l'écart est étalé sur tous. Plan 100 + 200 MU délivré 90 + 200 donnerait
+   96,7 + 193,3, total juste et répartition fausse. `BeamMeterset` ne doit donc
+   pas être lu comme « les MU relevées pour ce faisceau ». Retrouver la vraie
+   répartition demanderait d'apparier les faisceaux du log à ceux du plan et
+   d'interpoler faisceau par faisceau — ce qui lèverait aussi la limite 2.
 
 2. **L'axe des MU comporte des plateaux.** Mesuré sur l'IMRT à neuf faisceaux,
    54 % des échantillons partagent une MU déjà vue, et le plus long plateau
@@ -64,7 +69,8 @@ import zipfile
 
 import numpy as np
 import pydicom
-from pydicom.uid import generate_uid
+from pydicom.dataset import FileMetaDataset
+from pydicom.uid import ImplicitVRLittleEndian, generate_uid
 
 # Filtre restreint à l'import de pymedphys, qui est bavard au chargement. Un
 # filtre global masquerait aussi les avertissements de pydicom sur les valeurs
@@ -264,7 +270,16 @@ class LecteurRtplan:
     """Un RT Plan DICOM : les tags demandés, et le ds brut."""
 
     def __init__(self, chemin):
-        self.ds = pydicom.dcmread(chemin, force=True)
+        # Lecture normale d'abord. `force=True` n'est employé qu'en repli, et
+        # signalé : il accepte un fichier sans préambule ni marqueur « DICM »,
+        # ce qui est le cas des plans de référence publics mais ne doit pas
+        # passer inaperçu sur un export clinique.
+        try:
+            self.ds = pydicom.dcmread(chemin)
+        except pydicom.errors.InvalidDicomError:
+            self.ds = pydicom.dcmread(chemin, force=True)
+            print(f"  ⚠ {pathlib.Path(chemin).name} : lecture forcée, "
+                  "préambule ou méta-en-tête absent", file=sys.stderr)
         if "BeamSequence" not in self.ds:
             raise SystemExit(f"{chemin} n'est pas un RT Plan.")
         self.chemin = pathlib.Path(chemin)
@@ -374,22 +389,35 @@ class EcrivainDicom:
     clinique.
     """
 
+    CLASSE_RT_PLAN = "1.2.840.10008.5.1.4.1.1.481.5"
+
     def ecrire(self, ds, chemin, description=""):
         nouvel_uid = generate_uid()
         ds.SOPInstanceUID = nouvel_uid
         ds.SeriesInstanceUID = generate_uid()
-        # Le méta-en-tête porte une seconde copie de l'UID. Sans cette ligne, le
+
+        # Le méta-en-tête porte une seconde copie de l'UID. Sans ces lignes, le
         # fichier sort avec un UID neuf dans le dataset et **celui du plan
         # d'origine** dans le méta : l'identité neuve ne protège plus de rien.
-        # Invisible sur les données publiques, qui n'ont pas de file_meta.
-        if getattr(ds, "file_meta", None) is not None:
-            ds.file_meta.MediaStorageSOPInstanceUID = nouvel_uid
+        # Invisible sur les plans publics, qui n'ont aucun méta-en-tête.
+        if getattr(ds, "file_meta", None) is None:
+            ds.file_meta = FileMetaDataset()
+        ds.file_meta.MediaStorageSOPInstanceUID = nouvel_uid
+        ds.file_meta.MediaStorageSOPClassUID = getattr(
+            ds, "SOPClassUID", self.CLASSE_RT_PLAN)
+        if "TransferSyntaxUID" not in ds.file_meta:
+            ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+
         if "RTPlanLabel" in ds:
             ds.RTPlanLabel = (str(ds.RTPlanLabel) or "")[:10] + "_DEL"
         ds.ApprovalStatus = "UNAPPROVED"
         if description:
             ds.RTPlanDescription = description[:64]
-        ds.save_as(str(chemin), enforce_file_format=False)
+
+        # `enforce_file_format=True` écrit le préambule de 128 octets et le
+        # marqueur « DICM ». Sans lui le fichier n'est pas conforme Part 10 et
+        # ne se relit qu'avec `force=True` — y compris par les visionneuses.
+        ds.save_as(str(chemin), enforce_file_format=True)
         return chemin
 
 
