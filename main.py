@@ -6,8 +6,11 @@ Pour chaque séance de l'archive qui correspond au plan, écrit un DICOM ayant l
 structure exacte du plan — mêmes faisceaux, mêmes points de contrôle — mais les
 positions de lames, de mâchoires, les angles et les MU que la machine a relevés.
 
-⚠️ Les fichiers produits sont des documents d'analyse : SOP Instance UID neuf,
-ApprovalStatus UNAPPROVED. Ils ne doivent jamais repartir vers un R&V.
+⚠️ Les fichiers produits sont des RT Plan dérivés, destinés à l'analyse. UID
+neufs et ApprovalStatus UNAPPROVED les distinguent du plan d'origine, mais ce
+marquage ne garantit pas leur rejet par un système clinique : ils gardent leur
+SOP Class et restent importables. La barrière doit être l'environnement —
+répertoire isolé, aucune route DICOM vers le réseau clinique.
 
 Quatre classes, une responsabilité chacune :
 
@@ -20,6 +23,34 @@ Quatre classes, une responsabilité chacune :
 Dépendances : numpy, pydicom, pymedphys (décodage TRF). Les colonnes
 `unknown1..4` de pymedphys — l'horodatage machine découpé en quatre pour la
 compatibilité de ses tests — sont recomposées ici en une colonne `ms`.
+
+Limites connues, non corrigées
+------------------------------
+Elles sont réelles et documentées plutôt que masquées.
+
+1. **Les MU par faisceau sont réparties au prorata du plan.** Le facteur
+   `MU délivrées / MU prévues` est global : si un seul faisceau a été écourté,
+   l'écart est étalé sur tous. Retrouver la vraie répartition demanderait
+   d'apparier les faisceaux du log à ceux du plan, ce qui n'est pas fait.
+
+2. **L'axe des MU comporte des plateaux.** Mesuré sur l'IMRT à neuf faisceaux,
+   54 % des échantillons partagent une MU déjà vue, et le plus long plateau
+   dure 457 échantillons pendant lesquels les lames parcourent 108 mm : c'est
+   le repositionnement entre segments, faisceau éteint. `np.interp` y retient
+   la **dernière** valeur, donc la géométrie d'arrivée. C'est défendable mais
+   subi, pas choisi.
+
+3. **Seuls les tags déjà présents dans un point de contrôle sont réécrits.**
+   Un plan qui omet `GantryAngle` sur un point de contrôle inchangé ne peut pas
+   recevoir l'angle mesuré à cet endroit. La structure du plan est préservée au
+   prix de la fidélité.
+
+4. **Les sens de rotation ne sont pas reconstruits.** `GantryRotationDirection`
+   reste celui du plan alors que les angles, eux, sont mesurés.
+
+5. **L'appariement repose sur deux critères** — MU totales et médiane du dessin
+   du champ. Mesuré : 0,4 mm face au bon plan contre 12,8 mm face à un autre
+   traitement. Une médiane peut néanmoins diluer quelques lames très fausses.
 """
 
 import argparse
@@ -35,8 +66,13 @@ import numpy as np
 import pydicom
 from pydicom.uid import generate_uid
 
-warnings.filterwarnings("ignore")
-import pymedphys  # noqa: E402
+# Filtre restreint à l'import de pymedphys, qui est bavard au chargement. Un
+# filtre global masquerait aussi les avertissements de pydicom sur les valeurs
+# non conformes — VR DS trop longue notamment —, c'est-à-dire exactement ceux
+# qu'on veut voir.
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    import pymedphys  # noqa: E402
 
 COL_MU = "Step Dose/Actual Value (Mu)"
 COL_ETAT = "Linac State/Actual Value (None)"
@@ -232,6 +268,25 @@ class LecteurRtplan:
         if "BeamSequence" not in self.ds:
             raise SystemExit(f"{chemin} n'est pas un RT Plan.")
         self.chemin = pathlib.Path(chemin)
+        self._verifier_geometrie()
+
+    def _verifier_geometrie(self):
+        """Ce fichier vise un MLC à 80 paires (Agility). Le dire tôt et net.
+
+        Sans ce contrôle, une autre géométrie ne lèverait rien : elle donnerait
+        des positions découpées au mauvais endroit, plausibles et fausses.
+        """
+        for faisceau in self.ds.BeamSequence:
+            for cp in faisceau.ControlPointSequence:
+                for item in getattr(cp, "BeamLimitingDevicePositionSequence", []):
+                    if item.RTBeamLimitingDeviceType == "MLCX":
+                        n = len(item.LeafJawPositions)
+                        if n != 2 * PAIRES:
+                            raise SystemExit(
+                                f"{self.chemin.name} : MLCX à {n // 2} paires de "
+                                f"lames, cet outil en attend {PAIRES} (Agility).")
+                        return
+        raise SystemExit(f"{self.chemin.name} : aucune position MLCX trouvée.")
 
     def valeur(self, mot_cle):
         return getattr(self.ds, mot_cle, None)
@@ -278,8 +333,15 @@ class LecteurRtplan:
         MLCX connue est reportée. Conversion DICOM -> Delivery vérifiée :
         banc 0 = LeafJawPositions[80:] renversé, banc 1 = -[:80] renversé.
         """
+        # Appariement par BeamNumber, jamais par position : `grille()` ne rend
+        # que les faisceaux du groupe de fractions demandé, alors que
+        # `BeamSequence` les porte tous. Un zip décalerait tout dès qu'un
+        # faisceau du plan n'appartient pas au groupe — cas réel du plan à deux
+        # groupes, où le groupe 2 ne référence que les faisceaux 4, 5 et 6.
+        par_numero = {int(f.BeamNumber): f for f in self.ds.BeamSequence}
         mus, lames = [], []
-        for bloc, faisceau in zip(self.grille(fraction), self.ds.BeamSequence):
+        for bloc in self.grille(fraction):
+            faisceau = par_numero[bloc["numero"]]
             courant = None
             for cp, cible in zip(faisceau.ControlPointSequence, bloc["cibles"]):
                 for item in getattr(cp, "BeamLimitingDevicePositionSequence", []):
@@ -303,11 +365,25 @@ class LecteurRtplan:
 
 
 class EcrivainDicom:
-    """Écrit un ds en sécurité : le fichier ne doit jamais écraser le plan."""
+    """Écrit un ds avec une identité neuve, pour qu'il n'écrase jamais le plan.
+
+    ⚠️ Ce marquage n'est **pas** une protection technique. Le fichier reste un
+    RT Plan avec sa SOP Class d'origine : un R&V peut l'importer, l'afficher et
+    le transmettre. `UNAPPROVED` est un statut, pas un verrou. La vraie barrière
+    est l'environnement — répertoire isolé, aucune route DICOM vers le réseau
+    clinique.
+    """
 
     def ecrire(self, ds, chemin, description=""):
-        ds.SOPInstanceUID = generate_uid()
+        nouvel_uid = generate_uid()
+        ds.SOPInstanceUID = nouvel_uid
         ds.SeriesInstanceUID = generate_uid()
+        # Le méta-en-tête porte une seconde copie de l'UID. Sans cette ligne, le
+        # fichier sort avec un UID neuf dans le dataset et **celui du plan
+        # d'origine** dans le méta : l'identité neuve ne protège plus de rien.
+        # Invisible sur les données publiques, qui n'ont pas de file_meta.
+        if getattr(ds, "file_meta", None) is not None:
+            ds.file_meta.MediaStorageSOPInstanceUID = nouvel_uid
         if "RTPlanLabel" in ds:
             ds.RTPlanLabel = (str(ds.RTPlanLabel) or "")[:10] + "_DEL"
         ds.ApprovalStatus = "UNAPPROVED"
@@ -408,8 +484,8 @@ class Chaine:
             chemin = self.sortie / (f"{self.plan.chemin.stem}_delivre_"
                                     f"{horodatage}_s{rang:04d}.dcm")
             ecrivain.ecrire(delivre, chemin,
-                            f"Reconstitue depuis {len(seance['fichiers'])} log(s) "
-                            "machine. Analyse, non traitable.")
+                            f"Derive de {len(seance['fichiers'])} log(s) machine. "
+                            "Analyse uniquement.")
             ecart = 100 * (seance["mu"] - mu_plan) / mu_plan
             print(f"  {seance['debut']:%Y-%m-%d %H:%M} · "
                   f"{len(seance['fichiers'])} fichier(s) · {seance['mu']:7.1f} MU "
@@ -419,14 +495,15 @@ class Chaine:
 
         print(f"\n{len(ecrits)} fichier(s) écrit(s) dans {self.sortie}/")
         if ecrits:
-            print("  SOP Instance UID neufs · ApprovalStatus UNAPPROVED · non traitables")
+            print("  UID neufs · UNAPPROVED · plans dérivés pour analyse, à tenir "
+                  "hors de toute route DICOM clinique")
         return ecrits
 
 
 def main():
     analyseur = argparse.ArgumentParser(
         description="Écrit un RT Plan « délivré » par séance d'une archive de TRF.",
-        epilog="Les fichiers produits sont des documents d'analyse, non traitables.")
+        epilog="Les fichiers produits sont des plans derives, pour analyse seulement.")
     analyseur.add_argument("plan", help="RT Plan DICOM de référence")
     analyseur.add_argument("source", help="archive SDD (.zip) ou dossier de .trf")
     analyseur.add_argument("--sortie", help="dossier de sortie (défaut : celui du plan)")
