@@ -160,9 +160,15 @@ class Interface:
                              ("séance", "début", "champ", "fichiers", "MU",
                               "écart de MU", "dessin")]),
                 html.Div([
-                    html.Button("👁  Voir la séance sélectionnée", id="voir",
-                                n_clicks=0, style=BOUTON),
-                ], style={"margin": "12px 0"}),
+                    html.Button("👁  Voir la séance", id="voir",
+                                n_clicks=0, disabled=True, style=BOUTON),
+                    html.Button("⚖  Comparer la sélection", id="comparer_selection",
+                                n_clicks=0, disabled=True, style=BOUTON),
+                    html.Div(id="aide_boutons",
+                             style={"fontSize": "12px", "opacity": .65,
+                                    "alignSelf": "center"}),
+                ], style={"display": "flex", "gap": "8px", "margin": "12px 0",
+                          "alignItems": "center"}),
                 html.H4("Exporter", style={"marginTop": "18px"}),
                 ligne_chemin("choisir_sortie", "📂  Dossier de sortie…",
                              "chemin_sortie", "", "…ou coller le chemin du dossier"),
@@ -430,22 +436,35 @@ class Interface:
                     {"display": "block"})
 
         @app.callback(
-            Output("etat_export", "children"),
-            Input("exporter", "n_clicks"),
-            State("trouvees", "selected_rows"), State("chemin_sortie", "value"),
-            prevent_initial_call=True)
-        def _exporter(_c, choisies, sortie):
+            Output("voir", "disabled"), Output("comparer_selection", "disabled"),
+            Output("aide_boutons", "children"),
+            Input("trouvees", "selected_rows"))
+        def _activer(choisies):
+            """Chaque bouton n'a de sens que pour un nombre donné de séances.
+
+            Le visualiseur n'en montre qu'une ; la comparaison en demande au
+            moins deux. Les désactiver vaut mieux qu'un message après coup.
+            """
+            n = len(choisies or [])
+            if n == 0:
+                return True, True, "cocher une séance pour la voir, deux ou plus pour comparer"
+            if n == 1:
+                return False, True, "une séance : visible, mais rien à comparer"
+            return True, False, f"{n} séances : comparables entre elles"
+
+        def exporter(choisies, sortie):
+            """Écrit les séances choisies. Rend (dossier, noms, message d'erreur)."""
             if not self.appariees or self.chaine is None:
-                return "Chercher des séances d'abord."
+                return None, [], "Chercher des séances d'abord."
             if not choisies:
-                return "Aucune séance sélectionnée."
+                return None, [], "Aucune séance sélectionnée."
             if not sortie or not sortie.strip():
-                return "Choisir un dossier de sortie."
+                return None, [], "Choisir un dossier de sortie."
             dossier = pathlib.Path(sortie.strip().strip('"').strip("'"))
             try:
                 dossier.mkdir(parents=True, exist_ok=True)
             except Exception as erreur:
-                return f"❌ dossier inutilisable : {erreur}"
+                return None, [], f"❌ dossier inutilisable : {erreur}"
 
             ecrivain, ecrits = EcrivainDicom(), []
             souche = self.chaine.plan.chemin.stem
@@ -461,7 +480,19 @@ class Interface:
                                     "machine. Analyse uniquement.")
                     ecrits.append(chemin.name)
                 except Exception as erreur:
-                    return f"❌ séance {rang + 1} : {type(erreur).__name__} : {erreur}"
+                    return None, [], (f"❌ séance {rang + 1} : "
+                                      f"{type(erreur).__name__} : {erreur}")
+            return dossier, ecrits, None
+
+        @app.callback(
+            Output("etat_export", "children"),
+            Input("exporter", "n_clicks"),
+            State("trouvees", "selected_rows"), State("chemin_sortie", "value"),
+            prevent_initial_call=True)
+        def _exporter(_c, choisies, sortie):
+            dossier, ecrits, erreur = exporter(choisies, sortie)
+            if erreur:
+                return erreur
             return html.Div([
                 html.Div(f"✅ {len(ecrits)} fichier(s) écrit(s) dans {dossier}/"),
                 html.Div(", ".join(ecrits), style={"opacity": .7}),
@@ -480,9 +511,35 @@ class Interface:
             Chaque séance appariée garde l'index du cache dont elle vient : pas
             de recherche, donc pas d'ambiguïté si deux séances se ressemblent.
             """
-            if not choisies or not self.appariees or self.cache is None:
+            if not choisies or len(choisies) != 1 or self.cache is None:
                 return "plan", None
             return "seances", self.appariees[choisies[0]]["index_cache"]
+
+        @app.callback(
+            Output("onglets", "value", allow_duplicate=True),
+            Output("cmp_chemin_ref", "value", allow_duplicate=True),
+            Output("cmp_chemin_dossier", "value", allow_duplicate=True),
+            Output("cmp_charger", "n_clicks", allow_duplicate=True),
+            Output("etat_export", "children", allow_duplicate=True),
+            Input("comparer_selection", "n_clicks"),
+            State("trouvees", "selected_rows"), State("chemin_sortie", "value"),
+            State("cmp_charger", "n_clicks"), prevent_initial_call=True)
+        def _comparer_selection(_c, choisies, sortie, clics):
+            """Exporte la sélection, puis bascule sur l'onglet Comparer.
+
+            Comparer suppose des DICOM : on les écrit d'abord, dans le même
+            dossier de sortie que le bouton d'export, avec les mêmes noms — un
+            second passage réécrit les mêmes fichiers plutôt que d'en empiler.
+            Le compteur de clics de « Charger » est incrémenté pour déclencher
+            le chargement de l'onglet sans que l'utilisateur ait à y toucher.
+            """
+            dossier, ecrits, erreur = exporter(choisies, sortie)
+            if erreur:
+                return "plan", "", "", clics or 0, erreur
+            return ("comparer", str(self.chaine.plan.chemin), str(dossier),
+                    (clics or 0) + 1,
+                    html.Div(f"✅ {len(ecrits)} fichier(s) écrit(s), "
+                             "comparaison chargée dans l'onglet Comparer."))
 
     # ------------------------------------------------------------ comparaison
 
@@ -490,7 +547,8 @@ class Interface:
         app = self.app
 
         @app.callback(
-            Output("cmp_chemin_ref", "value"), Output("cmp_chemin_dossier", "value"),
+            Output("cmp_chemin_ref", "value", allow_duplicate=True),
+            Output("cmp_chemin_dossier", "value", allow_duplicate=True),
             Input("cmp_choisir_ref", "n_clicks"),
             Input("cmp_choisir_dossier", "n_clicks"),
             State("cmp_chemin_ref", "value"), State("cmp_chemin_dossier", "value"),
