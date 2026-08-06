@@ -17,6 +17,7 @@ séances comme des écarts est repris tel quel de `visualiseur_seances` et
 `comparateur_dicom`, qui restent lançables séparément.
 """
 
+import datetime
 import pathlib
 import sys
 
@@ -29,12 +30,15 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from comparateur_dicom import (bilan, comparables, figure_bras,  # noqa: E402
                                figure_ecart, figure_superposition, profil)
-from main import SONDAGES, Chaine, EcrivainDicom, LecteurRtplan  # noqa: E402
+from main import (SONDAGES, ArchiveTrf, Chaine,  # noqa: E402
+                  EcrivainDicom, LecteurRtplan)
 from visualiseur_seances import (JEUX, TABLEAU, CacheSeances,  # noqa: E402
                                  carte, demander_chemin, etiquette)
 
 PAS_S = 0.04
 VIDE = "—"
+TOLERANCE_MU = 0.01     # écart de MU toléré, en fraction
+SEUIL_DESSIN = 3.0      # mm de médiane tolérés sur le dessin du champ
 BOUTON = {"padding": "8px 16px", "fontSize": "13px", "cursor": "pointer",
           "borderRadius": "6px", "border": "1px solid rgba(128,128,128,.45)",
           "background": "#f4f4f5", "whiteSpace": "nowrap"}
@@ -382,12 +386,30 @@ class Interface:
             if not plan.exists():
                 return [], [], f"❌ introuvable : {plan}", masque
             try:
-                # Le cache sert de source : ses TRF sont déjà extraits, et le
-                # découpage qu'il en donne est identique à celui de l'archive.
-                self.chaine = Chaine(plan, self.cache.dossier)
+                # Le coût est dans le décodage des TRF : on ne décode que les
+                # séances dont les MU collent déjà, connues du cache sans lire
+                # un seul octet de log. Sur une semaine, cela ramène quelques
+                # centaines de fichiers à une poignée.
+                self.chaine = Chaine(plan)          # sans archive : on ne substitue
                 mu = self.chaine.plan.mu_total(self.chaine.fraction)
                 empreinte = self.chaine.plan.empreinte(SONDAGES, self.chaine.fraction)
-                self.appariees = self.chaine.archive.correspondantes(mu, empreinte)
+                candidates = [i for i, s in enumerate(self.cache.seances())
+                              if mu and abs(s["mu"] - mu) / mu <= TOLERANCE_MU]
+
+                self.appariees = []
+                for i in candidates:
+                    resume = self.cache.seances()[i]
+                    seance = {
+                        "machine": resume["machine"], "champ": resume["champ"],
+                        "debut": datetime.datetime.fromisoformat(resume["debut"]),
+                        "mu": resume["mu"], "fichiers": self.cache.tables(i),
+                        "index_cache": i,
+                    }
+                    dessin = float(np.median(np.abs(
+                        ArchiveTrf._empreinte(seance, SONDAGES) - empreinte)))
+                    if dessin <= SEUIL_DESSIN:
+                        seance["dessin"] = dessin
+                        self.appariees.append(seance)
             except Exception as erreur:
                 self.appariees = []
                 return [], [], f"❌ {type(erreur).__name__} : {erreur}", masque
@@ -455,17 +477,12 @@ class Interface:
         def _voir_seance(_c, choisies):
             """Bascule sur l'onglet Séances, sur la séance retenue.
 
-            Les séances appariées sont un sous-ensemble de celles du cache : on
-            retrouve la bonne par sa composition de fichiers, seule clé stable.
+            Chaque séance appariée garde l'index du cache dont elle vient : pas
+            de recherche, donc pas d'ambiguïté si deux séances se ressemblent.
             """
             if not choisies or not self.appariees or self.cache is None:
                 return "plan", None
-            voulue = {pathlib.PurePath(f["nom"]).name
-                      for f in self.appariees[choisies[0]]["fichiers"]}
-            for i, s in enumerate(self.cache.seances()):
-                if set(s["fichiers"]) == voulue:
-                    return "seances", i
-            return "plan", None
+            return "seances", self.appariees[choisies[0]]["index_cache"]
 
     # ------------------------------------------------------------ comparaison
 

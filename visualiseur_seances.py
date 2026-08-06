@@ -100,8 +100,18 @@ class CacheSeances:
 
     def _construire(self):
         print(f"  découpage de {self.archive.name} — long au premier passage…")
-        seances = ArchiveTrf(self.archive).seances()
+        lecture = ArchiveTrf(self.archive)
+        seances = lecture.seances()
+        if lecture.doublons:
+            print(f"  {len(lecture.doublons)} fichier(s) en double écarté(s)")
         self.dossier.mkdir(parents=True, exist_ok=True)
+        # Un cache précédent peut compter plus de séances : ses dossiers
+        # restants seraient relus comme des séances fantômes.
+        for ancien in self.dossier.glob("s[0-9]*"):
+            if ancien.is_dir():
+                for f in ancien.glob("*.trf"):
+                    f.unlink()
+                ancien.rmdir()
         octets = self._octets()
 
         resumes = []

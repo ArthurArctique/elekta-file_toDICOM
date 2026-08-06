@@ -112,6 +112,7 @@ class ArchiveTrf:
 
     def __init__(self, source):
         self.source = pathlib.Path(source)
+        self.doublons = []
         self._fichiers = list(self._lire_tout())
         self._seances = None
 
@@ -140,7 +141,18 @@ class ArchiveTrf:
         return table.drop(columns=[f"unknown{k}" for k in range(1, 5)])
 
     def _lire_tout(self):
-        """Décode chaque fichier par pymedphys (qui exige un chemin sur disque)."""
+        """Décode chaque fichier par pymedphys (qui exige un chemin sur disque).
+
+        Les doublons sont écartés. Une archive SDD contient couramment le même
+        enregistrement à deux endroits ; sans ce tri, chaque séance concernée
+        est comptée **deux fois** — la seconde copie ouvrant une séance de plus,
+        puisque la précédente s'est close sur « Terminated Ok ».
+
+        La clé est sémantique : une même machine ne peut pas finir deux
+        délivrances différentes du même champ à la même seconde, avec les mêmes
+        MU et le même nombre d'échantillons.
+        """
+        vus = set()
         with tempfile.TemporaryDirectory() as dossier:
             for rang, (nom, octets) in enumerate(self._entrees()):
                 chemin = pathlib.Path(dossier) / f"{rang:04d}.trf"
@@ -167,6 +179,13 @@ class ArchiveTrf:
                          if "ms" in table.columns else len(table) * PAS_S)
 
                 champ = str(entete["field_name"].iloc[0])
+                cle = (str(entete["machine"].iloc[0]), champ, fin,
+                       round(total, 1), len(table))
+                if cle in vus:
+                    self.doublons.append(nom)
+                    continue
+                vus.add(cle)
+
                 yield {
                     "nom": nom,
                     "machine": str(entete["machine"].iloc[0]),
@@ -245,9 +264,10 @@ class ArchiveTrf:
         seance["_recollee"] = (np.concatenate(mus), np.concatenate(lames))
         return seance["_recollee"]
 
-    def _empreinte(self, seance, fractions):
+    @staticmethod
+    def _empreinte(seance, fractions):
         """Les lames de la séance aux fractions de MU demandées."""
-        mu, lames = self._delivrance(seance)
+        mu, lames = ArchiveTrf._delivrance(seance)
         ordre = np.argsort(mu, kind="stable")
         mu, lames = mu[ordre], lames[ordre]
         cibles = np.array(fractions) * mu[-1]
@@ -518,15 +538,17 @@ class EcrivainDicom:
 class Chaine:
     """Plan + archive -> un DICOM « délivré » par séance correspondante."""
 
-    def __init__(self, chemin_plan, source_trf, sortie=None, fraction=1):
+    def __init__(self, chemin_plan, source_trf=None, sortie=None, fraction=1):
+        # `source_trf` peut être omis quand on ne veut que substituer dans des
+        # séances déjà en main : lire l'archive est de loin le plus coûteux.
         self.plan = LecteurRtplan(chemin_plan)
-        self.archive = ArchiveTrf(source_trf)
+        self.archive = ArchiveTrf(source_trf) if source_trf is not None else None
         self.sortie = pathlib.Path(sortie) if sortie else self.plan.chemin.parent
         self.fraction = fraction
 
     def _substituer(self, seance):
         """Injecte le mesuré de la séance dans la grille du plan."""
-        mu_log, lames_log = self.archive._delivrance(seance)
+        mu_log, lames_log = ArchiveTrf._delivrance(seance)
         ordre = np.argsort(mu_log, kind="stable")
         mu_log, lames_log = mu_log[ordre], lames_log[ordre]
 
