@@ -28,6 +28,24 @@ with warnings.catch_warnings():
 from .conventions import (COL_ETAT, COL_MU, ECART_MAX_S, PAIRES,
                           PAS_S, SONDAGES)
 
+
+def decalage_horaire(fuseau):
+    """Le décalage porté par l'en-tête, sous la forme « +10:00 ».
+
+    La date de l'en-tête est en UTC. Mosaiq, lui, affiche l'heure locale : sans
+    cette conversion on cherche une séance à 21 h alors qu'elle a eu lieu à 7 h
+    le lendemain, et on ne la retrouve jamais.
+    """
+    if len(fuseau) >= 6 and fuseau[0] in "+-":
+        try:
+            signe = 1 if fuseau[0] == "+" else -1
+            return signe * datetime.timedelta(hours=int(fuseau[1:3]),
+                                              minutes=int(fuseau[4:6]))
+        except ValueError:
+            pass
+    return datetime.timedelta(0)
+
+
 class ArchiveTrf:
     """Les TRF d'un zip, regroupés en séances, filtrés sur des critères reçus."""
 
@@ -92,12 +110,16 @@ class ArchiveTrf:
                 ruptures = np.where((np.diff(mu) < 0) & (mu[1:] <= plancher))[0]
                 total = float(sum(mu[i] for i in ruptures) + mu[-1])
 
-                # La date d'en-tête est la FIN de l'enregistrement ; la durée
-                # vient de l'horloge machine quand elle existe.
+                # La date d'en-tête est la FIN de l'enregistrement, et elle est
+                # en UTC — le « Z » qui la termine le dit. L'heure locale se
+                # retrouve par le décalage porté séparément dans l'en-tête.
                 fin = datetime.datetime.strptime(
                     str(entete["date"].iloc[0]), "%y/%m/%d %H:%M:%S Z")
+                fuseau = str(entete["timezone"].iloc[0])
+                decalage = decalage_horaire(fuseau)
                 duree = ((table["ms"].iloc[-1] - table["ms"].iloc[0]) / 1000.0
                          if "ms" in table.columns else len(table) * PAS_S)
+                debut = fin - datetime.timedelta(seconds=float(duree))
 
                 champ = str(entete["field_name"].iloc[0])
                 cle = (str(entete["machine"].iloc[0]), champ, fin,
@@ -111,7 +133,13 @@ class ArchiveTrf:
                     "nom": nom,
                     "machine": str(entete["machine"].iloc[0]),
                     "champ": champ,
-                    "debut": fin - datetime.timedelta(seconds=float(duree)),
+                    # `debut`/`fin` restent en UTC — ce sont eux qui servent au
+                    # chaînage. `*_local` est ce qu'on montre et ce qui se
+                    # compare à Mosaiq.
+                    "fuseau": fuseau,
+                    "debut_local": debut + decalage,
+                    "fin_local": fin + decalage,
+                    "debut": debut,
                     "fin": fin,
                     "mu": total,
                     "etat_final": str(table[COL_ETAT].iloc[-1]),
@@ -144,6 +172,8 @@ class ArchiveTrf:
             if nouvelle:
                 courante = {"machine": f["machine"], "champ": f["champ"],
                             "debut": f["debut"], "fin": f["fin"],
+                            "debut_local": f["debut_local"],
+                            "fin_local": f["fin_local"], "fuseau": f["fuseau"],
                             "mu": f["mu"], "etat_final": f["etat_final"],
                             "fichiers": [f]}
                 seances.append(courante)
@@ -151,6 +181,7 @@ class ArchiveTrf:
                 courante["fichiers"].append(f)
                 courante["mu"] += f["mu"]
                 courante["fin"] = f["fin"]
+                courante["fin_local"] = f["fin_local"]
                 courante["etat_final"] = f["etat_final"]
         self._seances = seances
         return seances

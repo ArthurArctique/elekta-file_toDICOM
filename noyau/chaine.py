@@ -152,14 +152,17 @@ class Chaine:
         ecrivain, ecrits = EcrivainDicom(), []
         for rang, seance in enumerate(seances, start=1):
             delivre = self._substituer(seance)
-            horodatage = seance["debut"].strftime("%Y%m%d_%H%M%S")
+            # Heure locale : c'est celle sous laquelle on cherchera la
+            # séance dans Mosaiq.
+            horodatage = seance.get("debut_local", seance["debut"]).strftime(
+                "%Y%m%d_%H%M%S")
             chemin = self.sortie / (f"{self.plan.chemin.stem}_delivre_"
                                     f"{horodatage}_s{rang:04d}.dcm")
             ecrivain.ecrire(delivre, chemin,
                             f"Derive de {len(seance['fichiers'])} log(s) machine. "
                             "Analyse uniquement.")
             ecart = 100 * (seance["mu"] - mu_plan) / mu_plan
-            print(f"  {seance['debut']:%Y-%m-%d %H:%M} · "
+            print(f"  {seance.get('debut_local', seance['debut']):%Y-%m-%d %H:%M} · "
                   f"{len(seance['fichiers'])} fichier(s) · {seance['mu']:7.1f} MU "
                   f"({ecart:+.2f} %) · dessin {seance['dessin']:.2f} mm "
                   f"-> {chemin.name}")
