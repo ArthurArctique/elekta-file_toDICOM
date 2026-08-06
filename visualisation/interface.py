@@ -310,7 +310,9 @@ class Interface:
                 carte("état final", s["etat_final"]),
             ]
             lignes = [("machine", s["machine"]), ("champ", s["champ"]),
-                      ("début (UTC)", s["debut"]), ("fin (UTC)", s["fin"]),
+                      ("début (local)", f"{s['debut']}   {s.get('fuseau', '')}"),
+                      ("fin (local)", s["fin"]),
+                      ("début (UTC)", s.get("debut_utc", "—")),
                       ("MU par fichier", " + ".join(f"{f['mu']:.1f}" for f in tables)),
                       ("états finaux", " → ".join(f["etat_final"] for f in tables)),
                       ("dossier", f"{self.cache.dossier}/{s['dossier']}")]
@@ -421,7 +423,10 @@ class Interface:
                     resume = self.cache.seances()[i]
                     seance = {
                         "machine": resume["machine"], "champ": resume["champ"],
+                        # `debut` du cache est déjà l'heure locale ; l'UTC est
+                        # conservé à côté pour qui en aurait besoin.
                         "debut": datetime.datetime.fromisoformat(resume["debut"]),
+                        "debut_local": datetime.datetime.fromisoformat(resume["debut"]),
                         "mu": resume["mu"], "fichiers": self.cache.tables(i),
                         "index_cache": i,
                     }

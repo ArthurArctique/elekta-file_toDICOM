@@ -76,10 +76,16 @@ class CacheSeances:
         self.dossier = pathlib.Path(dossier)
         self.index = self._charger() or self._construire()
 
+    # Changer ce numéro invalide les caches existants : à monter dès que la
+    # forme de l'index change, sinon un ancien index serait relu sans les
+    # champs attendus.
+    SCHEMA = 2
+
     def _signature(self):
         etat = self.archive.stat()
         return {"archive": str(self.archive.resolve()),
-                "octets": etat.st_size, "modifie": int(etat.st_mtime)}
+                "octets": etat.st_size, "modifie": int(etat.st_mtime),
+                "schema": self.SCHEMA}
 
     def _charger(self):
         fichier = self.dossier / "index.json"
@@ -87,7 +93,7 @@ class CacheSeances:
             return None
         contenu = json.loads(fichier.read_text(encoding="utf-8"))
         if contenu.get("signature") != self._signature():
-            print("  cache périmé (l'archive a changé) : reconstruction")
+            print("  cache périmé (archive ou format changé) : reconstruction")
             return None
         print(f"  cache lu : {len(contenu['seances'])} séance(s), aucun décodage")
         return contenu
@@ -130,8 +136,11 @@ class CacheSeances:
             resumes.append({
                 "rang": rang, "dossier": sous.name,
                 "machine": s["machine"], "champ": s["champ"],
-                "debut": s["debut"].isoformat(sep=" ", timespec="seconds"),
-                "fin": s["fin"].isoformat(sep=" ", timespec="seconds"),
+                "fuseau": s.get("fuseau", ""),
+                "debut": s["debut_local"].isoformat(sep=" ", timespec="seconds"),
+                "fin": s["fin_local"].isoformat(sep=" ", timespec="seconds"),
+                "debut_utc": s["debut"].isoformat(sep=" ", timespec="seconds"),
+                "fin_utc": s["fin"].isoformat(sep=" ", timespec="seconds"),
                 "mu": round(s["mu"], 1), "etat_final": s["etat_final"],
                 "nb_fichiers": len(s["fichiers"]), "fichiers": noms,
             })
@@ -383,8 +392,9 @@ class Visualiseur:
             lignes = [
                 ("machine", s["machine"]),
                 ("champ", s["champ"]),
-                ("début (UTC)", s["debut"]),
-                ("fin (UTC)", s["fin"]),
+                ("début (local)", f"{s['debut']}   {s.get('fuseau', '')}"),
+                ("fin (local)", f"{s['fin']}   {s.get('fuseau', '')}"),
+                ("début (UTC)", s.get("debut_utc", "—")),
                 ("MU par fichier", " + ".join(f"{f['mu']:.1f}" for f in tables)),
                 ("états finaux", " → ".join(f["etat_final"] for f in tables)),
                 ("dossier de cache", f"{cache.dossier}/{s['dossier']}"),
