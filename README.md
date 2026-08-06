@@ -74,7 +74,8 @@ Dans `exploration/`, chacun documenté en tête de fichier.
 | Script | Rôle |
 |---|---|
 | **`main.py`** (à la racine) | **Toute la chaîne en un fichier**, quatre classes, indépendant des scripts ci-dessous. Sans ligne de commande : `Chaine("plan.dcm", "SDD+xxx.zip", sortie="delivres/").executer()` écrit un RT Plan dérivé par séance correspondante |
-| **`visualiseur_seances.py`** (à la racine) | Interface au-dessus de `main.ArchiveTrf` : `Visualiseur("SDD+xxx.zip").lancer()`. Menu des séances, infos de la séance, un onglet par TRF. Met en cache dans `seances/` pour que les lancements suivants soient immédiats |
+| **`visualiseur_seances.py`** (à la racine) | Interface au-dessus de `main.ArchiveTrf` : `Visualiseur().lancer()`. On y localise l'archive, puis menu des séances, infos de la séance, un onglet par TRF. Met en cache dans `seances/` pour que les lancements suivants soient immédiats |
+| **`comparateur_dicom.py`** (à la racine) | Interface au-dessus de `main.LecteurRtplan` : `Comparateur().lancer()`. On y localise le plan de référence et le dossier des plans délivrés. Écart des lames, écart de bras, superposition des ouvertures, bilan |
 | **`organiser_trf.py`** | Inventorie une archive SDD, reconstitue les séances. `--extraire` crée un dossier par séance, `--diagnostic` détaille les fichiers atypiques, `--filtre` cible un fichier |
 | **`lire_rtp.py`** | Décode un plan RTP Connect exporté par Mosaiq |
 | **`chercher_seances.py`** | Retrouve les séances d'un plan dans une archive. `--methode` explique les critères, `--detail` les déroule |

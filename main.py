@@ -362,22 +362,38 @@ class LecteurRtplan:
         self._grilles[fraction] = faisceaux
         return faisceaux
 
-    def _lames_depliees(self, fraction=1):
-        """(mu_cumulées, lames Delivery) de chaque point de contrôle du plan.
+    def trajectoire(self, fraction=1):
+        """Ce que le plan demande, point de contrôle par point de contrôle.
+
+        Rend un dictionnaire : `mu` cumulées, `lames` en convention Delivery
+        (n, 80, 2), `bras` en degrés, et `decoupe` — les frontières de faisceaux
+        sur l'axe, utiles pour les tracer.
 
         Un point de contrôle n'écrit que ce qui change : la dernière valeur
-        MLCX connue est reportée. Conversion DICOM -> Delivery vérifiée :
-        banc 0 = LeafJawPositions[80:] renversé, banc 1 = -[:80] renversé.
+        connue est reportée, sans quoi la moitié des angles d'un arc manquent.
+        Conversion DICOM -> Delivery vérifiée : banc 0 = LeafJawPositions[80:]
+        renversé, banc 1 = -[:80] renversé.
         """
+        mus, lames, bras, decoupe = self._deplier(fraction)
+        return {"mu": mus, "lames": lames, "bras": bras, "decoupe": decoupe}
+
+    def _lames_depliees(self, fraction=1):
+        """(mu_cumulées, lames Delivery) — ce dont l'empreinte a besoin."""
+        mus, lames, _, _ = self._deplier(fraction)
+        return mus, lames
+
+    def _deplier(self, fraction=1):
+        """Le dépliage lui-même, en un seul endroit."""
         # Appariement par BeamNumber, jamais par position : `grille()` ne rend
         # que les faisceaux du groupe de fractions demandé, alors que
         # `BeamSequence` les porte tous. Un zip décalerait tout dès qu'un
         # faisceau du plan n'appartient pas au groupe — cas réel du plan à deux
         # groupes, où le groupe 2 ne référence que les faisceaux 4, 5 et 6.
         par_numero = {int(f.BeamNumber): f for f in self.ds.BeamSequence}
-        mus, lames = [], []
+        mus, lames, bras, decoupe = [], [], [], []
         for bloc in self.grille(fraction):
             faisceau = par_numero[bloc["numero"]]
+            debut = len(mus)
             # Vrai par construction — `cibles` vient de cette ControlPointSequence
             # — mais posé explicitement : c'est le dernier appariement positionnel
             # du fichier, et une évolution de `grille()` le romprait en silence.
@@ -385,17 +401,21 @@ class LecteurRtplan:
                 raise SystemExit(
                     f"Faisceau {bloc['numero']} : {len(faisceau.ControlPointSequence)} "
                     f"points de contrôle pour {len(bloc['cibles'])} cibles de MU.")
-            courant = None
+            courant, angle = None, 0.0
             for cp, cible in zip(faisceau.ControlPointSequence, bloc["cibles"]):
                 for item in getattr(cp, "BeamLimitingDevicePositionSequence", []):
                     if item.RTBeamLimitingDeviceType == "MLCX":
                         courant = np.array(item.LeafJawPositions, dtype=float)
+                if "GantryAngle" in cp:
+                    angle = float(cp.GantryAngle)
                 if courant is None:
                     continue
                 mus.append(cible)
+                bras.append(angle)
                 lames.append(np.stack([courant[PAIRES:][::-1],
                                        -courant[:PAIRES][::-1]], axis=1))
-        return np.array(mus), np.array(lames)
+            decoupe.append((bloc["numero"], debut, len(mus)))
+        return np.array(mus), np.array(lames), np.array(bras), decoupe
 
     def empreinte(self, fractions, fraction=1):
         """Les lames du plan aux fractions de MU demandées — même format que le log."""
