@@ -53,8 +53,11 @@ def ligne_chemin(bouton, texte, champ, valeur, invite, largeur="230px"):
     return html.Div([
         html.Button(texte, id=bouton, n_clicks=0,
                     style={**BOUTON, "minWidth": largeur}),
+        # Pas de `debounce` : il retarde l'envoi de la valeur jusqu'à la perte
+        # de focus, si bien qu'un chemin collé puis suivi d'un clic direct sur
+        # un bouton laisse l'état serveur vide — et le bouton semble inerte.
         dcc.Input(id=champ, type="text", value=valeur, placeholder=invite,
-                  debounce=True, style=CHAMP),
+                  style=CHAMP),
     ], style={"display": "flex", "gap": "8px", "marginBottom": "8px",
               "alignItems": "center"})
 
@@ -167,8 +170,13 @@ class Interface:
                     html.Div(id="aide_boutons",
                              style={"fontSize": "12px", "opacity": .65,
                                     "alignSelf": "center"}),
-                ], style={"display": "flex", "gap": "8px", "margin": "12px 0",
+                ], style={"display": "flex", "gap": "8px", "margin": "12px 0 4px",
                           "alignItems": "center"}),
+                # Le retour de ces boutons s'affiche ici, sous eux : le mettre
+                # dans la zone d'export, plus bas, revenait à ne rien montrer.
+                dcc.Loading(html.Div(id="etat_action",
+                                     style={"fontSize": "12px", "minHeight": "18px",
+                                            "marginBottom": "8px"})),
                 html.H4("Exporter", style={"marginTop": "18px"}),
                 ligne_chemin("choisir_sortie", "📂  Dossier de sortie…",
                              "chemin_sortie", "", "…ou coller le chemin du dossier"),
@@ -461,7 +469,8 @@ class Interface:
             if not choisies:
                 return None, [], "Aucune séance sélectionnée."
             if not sortie or not sortie.strip():
-                return None, [], "Choisir un dossier de sortie."
+                return None, [], ("Choisir d'abord un dossier de sortie, "
+                                  "dans la section Exporter ci-dessous.")
             dossier = pathlib.Path(sortie.strip().strip('"').strip("'"))
             try:
                 dossier.mkdir(parents=True, exist_ok=True)
@@ -522,7 +531,7 @@ class Interface:
             Output("cmp_chemin_ref", "value", allow_duplicate=True),
             Output("cmp_chemin_dossier", "value", allow_duplicate=True),
             Output("cmp_charger", "n_clicks", allow_duplicate=True),
-            Output("etat_export", "children", allow_duplicate=True),
+            Output("etat_action", "children"),
             Input("comparer_selection", "n_clicks"),
             State("trouvees", "selected_rows"), State("chemin_sortie", "value"),
             State("cmp_charger", "n_clicks"), prevent_initial_call=True)
