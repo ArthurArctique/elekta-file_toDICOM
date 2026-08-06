@@ -9,7 +9,7 @@ elle n'est pas téléversée par le navigateur — l'application tourne sur le p
 et lit le fichier là où il est. Le champ de texte reste disponible pour un
 copier-coller, et un second bouton accepte un dossier de `.trf`.
 
-Le découpage en séances est celui de `main.ArchiveTrf` — la classe est appelée,
+Le découpage en séances est celui d'`archive_trf.ArchiveTrf` — la classe est appelée,
 pas réimplémentée. Cette page n'est qu'une interface par-dessus.
 
 Le cache
@@ -43,7 +43,8 @@ from dash import (Dash, Input, Output, State, callback_context,
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from main import COL_ETAT, COL_MU, PAS_S, ArchiveTrf  # noqa: E402
+from archive_trf import ArchiveTrf  # noqa: E402
+from conventions import COL_ETAT, COL_MU, PAS_S  # noqa: E402
 
 TABLEAU = {
     "style_cell": {"fontFamily": "ui-monospace, SFMono-Regular, monospace",
@@ -147,7 +148,7 @@ class CacheSeances:
         """Les tables décodées d'une séance, à la demande.
 
         Relit le dossier de la séance avec la même classe que l'archive : c'est
-        le décodage de `main.ArchiveTrf`, jamais une seconde implémentation.
+        le décodage d'`archive_trf.ArchiveTrf`, jamais une seconde implémentation.
         """
         resume = self.seances()[rang]
         lecture = ArchiveTrf(self.dossier / resume["dossier"])

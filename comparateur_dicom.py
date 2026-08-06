@@ -5,11 +5,11 @@
 
 Les deux chemins se choisissent **dans la page** : un bouton pour le plan de
 référence, un autre pour le dossier des plans à comparer — typiquement celui
-qu'a rempli `main.Chaine`. Tout est lu localement, rien n'est téléversé.
+qu'a rempli `chaine.Chaine`. Tout est lu localement, rien n'est téléversé.
 
-Les plans sont lus par `main.LecteurRtplan`, la trajectoire vient de sa méthode
-`trajectoire()` : même dépliage des points de contrôle et mêmes conventions de
-bancs que la chaîne qui a produit ces fichiers. Aucune seconde implémentation.
+Les plans sont lus par `lecteur_rtplan.LecteurRtplan`, la trajectoire vient de
+sa méthode `trajectoire()` : même dépliage des points de contrôle et mêmes
+conventions de bancs que la chaîne. Aucune seconde implémentation.
 
 Deux questions, une seule page
 ------------------------------
@@ -33,7 +33,8 @@ from dash import (Dash, Input, Output, State, callback_context,
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from main import PAIRES, LecteurRtplan  # noqa: E402
+from conventions import PAIRES  # noqa: E402
+from lecteur_rtplan import LecteurRtplan  # noqa: E402
 from visualiseur_seances import TABLEAU, carte, demander_chemin  # noqa: E402
 
 COULEURS = ("#3b6fd4", "#d4663b", "#3ba55c", "#a53b96", "#c9a227", "#00838f")

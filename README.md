@@ -73,7 +73,12 @@ Dans `exploration/`, chacun documenté en tête de fichier.
 
 | Script | Rôle |
 |---|---|
-| **`main.py`** (à la racine) | **Toute la chaîne en un fichier**, quatre classes, indépendant des scripts ci-dessous. Sans ligne de commande : `Chaine("plan.dcm", "SDD+xxx.zip", sortie="delivres/").executer()` écrit un RT Plan dérivé par séance correspondante |
+| **`main.py`** (à la racine) | **La démonstration** : `python3 main.py` montre la chaîne complète puis la même chose étape par étape. Aucune logique, seulement des appels |
+| `conventions.py` | Noms de colonnes, géométrie visée, seuils, conversions de repère |
+| `archive_trf.py` | **`ArchiveTrf`** — les TRF d'un zip, regroupés en séances, filtrés sur des critères **reçus** |
+| `lecteur_rtplan.py` | **`LecteurRtplan`** — un RT Plan : ses tags, sa trajectoire, son `ds` brut |
+| `ecrivain_dicom.py` | **`EcrivainDicom`** — identité neuve au dérivé, `preparer()` sans écrire ou `ecrire()` avec contrôle |
+| `chaine.py` | **`Chaine`** — orchestre les trois : `Chaine("plan.dcm", "SDD+xxx.zip", sortie="delivres/").executer()` |
 | **`interface.py`** (à la racine) | **L'interface complète**, trois onglets autour d'une archive chargée une fois : `Interface().lancer()`. Séances · Plan → export sélectif · Comparer |
 | `visualiseur_seances.py` | Le seul onglet des séances, lançable à part : `Visualiseur().lancer()`. Met en cache dans `seances/` |
 | `comparateur_dicom.py` | Le seul onglet de comparaison, lançable à part : `Comparateur().lancer()` |

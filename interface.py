@@ -11,10 +11,10 @@ trois onglets.
                 exporter en DICOM délivré, et sauter à leur détail
     Comparer    le plan d'origine face aux plans délivrés d'un dossier
 
-Rien n'est réimplémenté : les séances viennent de `main.ArchiveTrf`, les plans
-de `main.LecteurRtplan`, la substitution de `main.Chaine`, et l'affichage des
-séances comme des écarts est repris tel quel de `visualiseur_seances` et
-`comparateur_dicom`, qui restent lançables séparément.
+Rien n'est réimplémenté : les séances viennent d'`archive_trf.ArchiveTrf`, les
+plans de `lecteur_rtplan.LecteurRtplan`, la substitution de `chaine.Chaine`, et
+l'affichage des séances comme des écarts est repris tel quel de
+`visualiseur_seances` et `comparateur_dicom`, qui restent lançables séparément.
 """
 
 import datetime
@@ -30,8 +30,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from comparateur_dicom import (bilan, comparables, figure_bras,  # noqa: E402
                                figure_ecart, figure_superposition, profil)
-from main import (SONDAGES, ArchiveTrf, Chaine,  # noqa: E402
-                  EcrivainDicom, LecteurRtplan)
+from archive_trf import ArchiveTrf  # noqa: E402
+from chaine import Chaine  # noqa: E402
+from conventions import SONDAGES  # noqa: E402
+from ecrivain_dicom import EcrivainDicom  # noqa: E402
+from lecteur_rtplan import LecteurRtplan  # noqa: E402
 from visualiseur_seances import (JEUX, TABLEAU, CacheSeances,  # noqa: E402
                                  carte, demander_chemin, etiquette)
 
@@ -70,7 +73,7 @@ class Interface:
         self.dossier_cache = dossier_cache
         self.cache = None            # CacheSeances, partagé par les onglets
         self.appariees = []          # séances retenues pour le plan courant
-        self.chaine = None           # main.Chaine, pour l'export
+        self.chaine = None           # chaine.Chaine, pour la substitution
         self.profils, self.ordre = {}, []
         self.port = port
         self.app = Dash(__name__, title="Elekta — logs et plans",
