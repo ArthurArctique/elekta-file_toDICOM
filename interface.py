@@ -440,17 +440,19 @@ class Interface:
             Output("aide_boutons", "children"),
             Input("trouvees", "selected_rows"))
         def _activer(choisies):
-            """Chaque bouton n'a de sens que pour un nombre donné de séances.
+            """Chaque bouton s'active selon ce qu'il sait faire.
 
-            Le visualiseur n'en montre qu'une ; la comparaison en demande au
-            moins deux. Les désactiver vaut mieux qu'un message après coup.
+            Le visualiseur ne montre qu'une séance à la fois. La comparaison,
+            elle, charge **aussi le plan de référence** : une seule séance suffit
+            donc — c'est même le cas courant, « la délivrance a-t-elle suivi le
+            plan ». À partir de deux, s'ajoute la constance de la machine.
             """
             n = len(choisies or [])
             if n == 0:
-                return True, True, "cocher une séance pour la voir, deux ou plus pour comparer"
+                return True, True, "cocher au moins une séance"
             if n == 1:
-                return False, True, "une séance : visible, mais rien à comparer"
-            return True, False, f"{n} séances : comparables entre elles"
+                return False, False, "une séance : visible, et comparable au plan"
+            return True, False, (f"{n} séances : comparables au plan et entre elles")
 
         def exporter(choisies, sortie):
             """Écrit les séances choisies. Rend (dossier, noms, message d'erreur)."""
