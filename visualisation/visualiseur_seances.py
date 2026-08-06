@@ -41,10 +41,12 @@ import plotly.graph_objects as go
 from dash import (Dash, Input, Output, State, callback_context,
                   dash_table, dcc, html)
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+# La racine du dépôt sur le chemin : le paquet `noyau` s'importe alors
+# quel que soit le dossier depuis lequel on lance.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from archive_trf import ArchiveTrf  # noqa: E402
-from conventions import COL_ETAT, COL_MU, PAS_S  # noqa: E402
+from noyau.archive_trf import ArchiveTrf  # noqa: E402
+from noyau.conventions import COL_ETAT, COL_MU, PAS_S  # noqa: E402
 
 TABLEAU = {
     "style_cell": {"fontFamily": "ui-monospace, SFMono-Regular, monospace",

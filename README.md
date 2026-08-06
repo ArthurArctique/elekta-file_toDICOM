@@ -39,56 +39,72 @@ C'est le seul verrou. Le reste est de l'ingénierie dont le principe est établi
 
 ## Démarrage
 
-`organiser_trf.py` ne demande que `numpy` : il décode le TRF lui-même et garde
-en dur les codes des colonnes dont il dépend. `pymedphys` le complète s'il est
-présent, pour nommer les 350 colonnes — les séances reconstituées sont
-identiques dans les deux cas.
-
-Les outils qui écrivent du DICOM (`seance_vers_dicom.py`,
-`trf_vers_dicom_vmat.py`) demandent en revanche `pymedphys` et `pydicom` : ils
-reprennent ses conversions de repère plutôt que de les réécrire. Les pages
-`dash` demandent `dash` et `plotly`.
-
-```bash
-# 1. inventorier une semaine de logs, sans rien déplacer
-python3 exploration/organiser_trf.py "SDD+xxxx.zip" --sortie rapport/
-
-# 2. retrouver les séances correspondant à un plan
-python3 exploration/chercher_seances.py plan.rtp "SDD+xxxx.zip" --detail
+```python
+from visualisation import Interface
+Interface().lancer()          # puis http://127.0.0.1:8050
 ```
 
-Le premier produit `fichiers.csv` et `seances.csv`. Le second rend la liste des
-fractions, avec pour chacune l'écart de MU et l'écart des positions de lames.
+Tout se fait dans la page : localiser l'archive SDD, parcourir ses séances,
+confronter un RT Plan, exporter les fractions retenues, comparer. Rien n'est
+téléversé — l'application tourne sur le poste et lit les fichiers là où ils sont.
 
-⚠️ Les CSV portent des identifiants de champ de traitement, ré-identifiants via
-le R&V. Le `.gitignore` les exclut, ainsi que tout `.trf`, `.dcm` et `.rtp`.
+En script :
+
+```python
+from noyau import Chaine
+Chaine("plan.dcm", "SDD+xxxx.zip", sortie="delivres/").executer()
+```
+
+`python3 main.py` en fait la démonstration sur les données publiques.
+
+**Dépendances** : `numpy`, `pydicom`, `pymedphys` pour le noyau ; `dash` et
+`plotly` en plus pour les pages.
+
+⚠️ Le cache `seances/` et les DICOM produits contiennent des données patient.
+Le `.gitignore` les exclut, ainsi que tout `.trf`, `.dcm` et `.rtp`.
 
 ---
 
-## Les outils
+## L'outil
 
-Dans `exploration/`, chacun documenté en tête de fichier.
+### `noyau/` — la chaîne
 
-### Chaîne principale
-
-| Script | Rôle |
+| Module | Rôle |
 |---|---|
-| **`main.py`** (à la racine) | **La démonstration** : `python3 main.py` montre la chaîne complète puis la même chose étape par étape. Aucune logique, seulement des appels |
 | `conventions.py` | Noms de colonnes, géométrie visée, seuils, conversions de repère |
 | `archive_trf.py` | **`ArchiveTrf`** — les TRF d'un zip, regroupés en séances, filtrés sur des critères **reçus** |
 | `lecteur_rtplan.py` | **`LecteurRtplan`** — un RT Plan : ses tags, sa trajectoire, son `ds` brut |
 | `ecrivain_dicom.py` | **`EcrivainDicom`** — identité neuve au dérivé, `preparer()` sans écrire ou `ecrire()` avec contrôle |
-| `chaine.py` | **`Chaine`** — orchestre les trois : `Chaine("plan.dcm", "SDD+xxx.zip", sortie="delivres/").executer()` |
-| **`interface.py`** (à la racine) | **L'interface complète**, trois onglets autour d'une archive chargée une fois : `Interface().lancer()`. Séances · Plan → export sélectif · Comparer |
-| `visualiseur_seances.py` | Le seul onglet des séances, lançable à part : `Visualiseur().lancer()`. Met en cache dans `seances/` |
-| `comparateur_dicom.py` | Le seul onglet de comparaison, lançable à part : `Comparateur().lancer()` |
+| `chaine.py` | **`Chaine`** — orchestre les trois |
+
+### `visualisation/` — les pages
+
+| Module | Rôle |
+|---|---|
+| **`interface.py`** | **`Interface`** — les trois onglets autour d'une archive chargée une fois : Séances · Plan → export sélectif · Comparer |
+| `visualiseur_seances.py` | **`Visualiseur`** — le seul onglet des séances, lançable à part. Met en cache dans `seances/` |
+| `comparateur_dicom.py` | **`Comparateur`** — le seul onglet de comparaison, lançable à part |
+
+`main.py`, à la racine, ne contient aucune logique : il montre la chaîne
+complète puis les mêmes étapes une à une.
+
+---
+
+## Les scripts d'exploration
+
+Antérieurs au noyau, conservés parce qu'ils font des choses qu'il ne fait pas —
+lire un `.rtp`, diagnostiquer une archive, éprouver un découpage alternatif.
+Chacun documenté en tête de fichier, dans `exploration/`.
+
+| Script | Rôle |
+|---|---|
 | **`organiser_trf.py`** | Inventorie une archive SDD, reconstitue les séances. `--extraire` crée un dossier par séance, `--diagnostic` détaille les fichiers atypiques, `--filtre` cible un fichier |
 | **`lire_rtp.py`** | Décode un plan RTP Connect exporté par Mosaiq |
 | **`chercher_seances.py`** | Retrouve les séances d'un plan dans une archive. `--methode` explique les critères, `--detail` les déroule |
 | **`comparer_rtp_seance.py`** | Confronte un plan à une séance précise |
-| **`visualiser_rtplan.py`** | Explore un RT Plan DICOM dans le navigateur : faisceaux, points de contrôle, ouverture du collimateur, tags bruts. Champs identifiants masqués par défaut. Demande `dash` et `plotly` |
-| **`comparer_dicom.py`** | Confronte plusieurs RT Plan dans le navigateur : le plan face à ses fractions délivrées, et les fractions entre elles. Écart des lames le long de la délivrance, superposition des ouvertures |
-| **`seance_vers_dicom.py`** | Retrouve seul les séances d'un plan dans une archive et écrit **un RT Plan « délivré » par fraction** : positions, angles et MU relevés par la machine, substitués dans la grille du plan. `--consigne` écrit la consigne du servo au lieu de la position atteinte |
+| **`visualiser_rtplan.py`** | Explore un RT Plan DICOM dans le navigateur : faisceaux, points de contrôle, ouverture du collimateur, tags bruts |
+| **`comparer_dicom.py`** | Confronte plusieurs RT Plan dans le navigateur — ancêtre de `visualisation/comparateur_dicom.py` |
+| **`seance_vers_dicom.py`** | Retrouve seul les séances d'un plan et écrit un RT Plan délivré par fraction. `--consigne` écrit la consigne du servo au lieu de la position atteinte |
 
 ### Démonstration et vérification
 

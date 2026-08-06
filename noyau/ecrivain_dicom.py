@@ -10,7 +10,7 @@ from pydicom.dataset import FileMetaDataset
 from pydicom.uid import (ExplicitVRBigEndian, ExplicitVRLittleEndian,
                          ImplicitVRLittleEndian, generate_uid)
 
-from conventions import CLASSE_RT_PLAN
+from .conventions import CLASSE_RT_PLAN
 
 class EcrivainDicom:
     """Écrit un ds avec une identité neuve, pour qu'il n'écrase jamais le plan.

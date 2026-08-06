@@ -25,8 +25,8 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import pymedphys  # noqa: E402
 
-from conventions import (COL_ETAT, COL_MU, ECART_MAX_S, PAIRES, PAS_S,
-                         SONDAGES)
+from .conventions import (COL_ETAT, COL_MU, ECART_MAX_S, PAIRES,
+                          PAS_S, SONDAGES)
 
 class ArchiveTrf:
     """Les TRF d'un zip, regroupés en séances, filtrés sur des critères reçus."""

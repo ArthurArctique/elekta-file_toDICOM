@@ -56,11 +56,12 @@ import pathlib
 
 import numpy as np
 
-from archive_trf import ArchiveTrf
-from conventions import (COL_BRAS, COL_COLLIMATEUR, COLS_MACHOIRES, PAIRES,
-                         SONDAGES, machoires_vers_dicom, mlc_vers_dicom)
-from ecrivain_dicom import EcrivainDicom
-from lecteur_rtplan import LecteurRtplan
+from .archive_trf import ArchiveTrf
+from .conventions import (COL_BRAS, COL_COLLIMATEUR, COLS_MACHOIRES,
+                          PAIRES, SONDAGES, machoires_vers_dicom,
+                          mlc_vers_dicom)
+from .ecrivain_dicom import EcrivainDicom
+from .lecteur_rtplan import LecteurRtplan
 
 class Chaine:
     """Plan + archive -> un DICOM « délivré » par séance correspondante."""

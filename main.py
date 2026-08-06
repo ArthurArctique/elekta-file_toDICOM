@@ -2,19 +2,23 @@
 
     python3 main.py
 
-Ce fichier ne contient aucune logique — il montre. Le code vit dans cinq
-modules, un par responsabilité :
+Ce fichier ne contient aucune logique — il montre. Le dépôt tient en deux
+paquets :
 
-    conventions.py      noms de colonnes, géométrie visée, seuils, et les
-                        conversions du repère Delivery vers celui de DICOM
-    archive_trf.py      ArchiveTrf     — les TRF d'un zip, regroupés en séances
-    lecteur_rtplan.py   LecteurRtplan  — un RT Plan : ses tags et son ds brut
-    ecrivain_dicom.py   EcrivainDicom  — donne au dérivé une identité neuve,
-                                         avec ou sans écriture
-    chaine.py           Chaine         — orchestre les trois
+    noyau/          la chaîne, une classe par module
+        conventions      noms de colonnes, géométrie visée, seuils, conversions
+        archive_trf      ArchiveTrf     — les TRF d'un zip, en séances
+        lecteur_rtplan   LecteurRtplan  — un RT Plan : ses tags, son ds brut
+        ecrivain_dicom   EcrivainDicom  — l'identité neuve d'un dérivé
+        chaine           Chaine         — orchestre les trois
 
-Les interfaces (`interface.py`, `visualiseur_seances.py`, `comparateur_dicom.py`)
-importent ces modules directement.
+    visualisation/  les pages Dash, posées sur `noyau`
+        interface            les trois onglets réunis
+        visualiseur_seances  les séances d'une archive
+        comparateur_dicom    le plan face à ses délivrances
+
+    from visualisation import Interface
+    Interface().lancer()
 
 ⚠️ Les plans produits sont des documents d'analyse : UID neufs et
 `ApprovalStatus = UNAPPROVED` les distinguent de l'original, mais ce marquage ne
@@ -31,7 +35,7 @@ SORTIE = "delivres"
 
 def tout_en_un():
     """Le chemin le plus court : `Chaine` fait les trois étapes elle-même."""
-    from chaine import Chaine
+    from noyau import Chaine
 
     print("=" * 68, "\n1. LA CHAÎNE COMPLÈTE\n" + "=" * 68)
     Chaine(PLAN, ARCHIVE, sortie=SORTIE).executer()
@@ -39,11 +43,8 @@ def tout_en_un():
 
 def etape_par_etape():
     """Les mêmes étapes, à la main, pour voir ce que chaque classe apporte."""
-    from archive_trf import ArchiveTrf
-    from chaine import Chaine
-    from conventions import SONDAGES
-    from ecrivain_dicom import EcrivainDicom
-    from lecteur_rtplan import LecteurRtplan
+    from noyau import (SONDAGES, ArchiveTrf, Chaine, EcrivainDicom,
+                       LecteurRtplan)
 
     print("\n" + "=" * 68, "\n2. ÉTAPE PAR ÉTAPE\n" + "=" * 68)
 

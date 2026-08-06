@@ -13,7 +13,7 @@ import sys
 import numpy as np
 import pydicom
 
-from conventions import CLASSE_RT_PLAN, PAIRES
+from .conventions import CLASSE_RT_PLAN, PAIRES
 
 class LecteurRtplan:
     """Un RT Plan DICOM : les tags demandés, et le ds brut."""

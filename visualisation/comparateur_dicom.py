@@ -31,11 +31,14 @@ import plotly.graph_objects as go
 from dash import (Dash, Input, Output, State, callback_context,
                   dash_table, dcc, html)
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+# La racine du dépôt sur le chemin : le paquet `noyau` s'importe alors
+# quel que soit le dossier depuis lequel on lance.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from conventions import PAIRES  # noqa: E402
-from lecteur_rtplan import LecteurRtplan  # noqa: E402
-from visualiseur_seances import TABLEAU, carte, demander_chemin  # noqa: E402
+from noyau.conventions import PAIRES  # noqa: E402
+from noyau.lecteur_rtplan import LecteurRtplan  # noqa: E402
+
+from .visualiseur_seances import TABLEAU, carte, demander_chemin  # noqa: E402
 
 COULEURS = ("#3b6fd4", "#d4663b", "#3ba55c", "#a53b96", "#c9a227", "#00838f")
 GRIS = "#9aa0a6"

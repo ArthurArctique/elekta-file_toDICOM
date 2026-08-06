@@ -26,17 +26,20 @@ import plotly.graph_objects as go
 from dash import (Dash, Input, Output, State, callback_context,
                   dash_table, dcc, html)
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+# La racine du dépôt sur le chemin : le paquet `noyau` s'importe alors
+# quel que soit le dossier depuis lequel on lance.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from comparateur_dicom import (bilan, comparables, figure_bras,  # noqa: E402
-                               figure_ecart, figure_superposition, profil)
-from archive_trf import ArchiveTrf  # noqa: E402
-from chaine import Chaine  # noqa: E402
-from conventions import SONDAGES  # noqa: E402
-from ecrivain_dicom import EcrivainDicom  # noqa: E402
-from lecteur_rtplan import LecteurRtplan  # noqa: E402
-from visualiseur_seances import (JEUX, TABLEAU, CacheSeances,  # noqa: E402
-                                 carte, demander_chemin, etiquette)
+from noyau.archive_trf import ArchiveTrf  # noqa: E402
+from noyau.chaine import Chaine  # noqa: E402
+from noyau.conventions import SONDAGES  # noqa: E402
+from noyau.ecrivain_dicom import EcrivainDicom  # noqa: E402
+
+from .comparateur_dicom import (bilan, comparables,  # noqa: E402
+                                figure_bras, figure_ecart,
+                                figure_superposition, profil)
+from .visualiseur_seances import (JEUX, TABLEAU, CacheSeances,  # noqa: E402
+                                  carte, demander_chemin, etiquette)
 
 PAS_S = 0.04
 VIDE = "—"
