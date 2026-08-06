@@ -301,16 +301,23 @@ class LecteurRtplan:
     """Un RT Plan DICOM : les tags demandés, et le ds brut."""
 
     def __init__(self, chemin):
-        # Lecture normale d'abord. `force=True` n'est employé qu'en repli, et
-        # signalé : il accepte un fichier sans préambule ni marqueur « DICM »,
-        # ce qui est le cas des plans de référence publics mais ne doit pas
-        # passer inaperçu sur un export clinique.
-        try:
-            self.ds = pydicom.dcmread(chemin)
-        except pydicom.errors.InvalidDicomError:
-            self.ds = pydicom.dcmread(chemin, force=True)
-            print(f"  ⚠ {pathlib.Path(chemin).name} : lecture forcée, "
-                  "préambule ou méta-en-tête absent", file=sys.stderr)
+        # Un dataset déjà en mémoire est accepté tel quel : un plan dérivé tout
+        # juste substitué n'a pas à faire un aller-retour par le disque pour
+        # être relu.
+        if isinstance(chemin, pydicom.dataset.Dataset):
+            self.ds = chemin
+            chemin = getattr(chemin, "RTPlanLabel", None) or "dataset"
+        else:
+            # Lecture normale d'abord. `force=True` n'est employé qu'en repli,
+            # et signalé : il accepte un fichier sans préambule ni marqueur
+            # « DICM », ce qui est le cas des plans de référence publics mais ne
+            # doit pas passer inaperçu sur un export clinique.
+            try:
+                self.ds = pydicom.dcmread(chemin)
+            except pydicom.errors.InvalidDicomError:
+                self.ds = pydicom.dcmread(chemin, force=True)
+                print(f"  ⚠ {pathlib.Path(chemin).name} : lecture forcée, "
+                      "préambule ou méta-en-tête absent", file=sys.stderr)
         classe = getattr(self.ds, "SOPClassUID", None)
         if classe is not None and classe != EcrivainDicom.CLASSE_RT_PLAN:
             raise SystemExit(f"{chemin} : SOP Class {classe}, "
@@ -470,6 +477,19 @@ class EcrivainDicom:
     #   FrameOfReferenceUID         conservé   — même repère géométrique
 
     def ecrire(self, ds, chemin, description=""):
+        """Prépare l'identité du dérivé, l'écrit, et contrôle le fichier écrit."""
+        self.preparer(ds, description)
+        ds.save_as(str(chemin), enforce_file_format=True)
+        self._controler(chemin, ds.SOPInstanceUID)
+        return chemin
+
+    def preparer(self, ds, description=""):
+        """Donne au dérivé son identité neuve, **sans l'écrire**.
+
+        Séparé de `ecrire` parce que tout n'a pas vocation à passer par le
+        disque : comparer deux délivrances ne demande que des datasets en
+        mémoire, et les écrire pour les relire aussitôt serait un détour.
+        """
         nouvel_uid = generate_uid()
         ds.SOPInstanceUID = nouvel_uid
         ds.SeriesInstanceUID = generate_uid()
@@ -502,13 +522,7 @@ class EcrivainDicom:
         ds.ApprovalStatus = "UNAPPROVED"
         if description:
             ds.RTPlanDescription = description[:64]
-
-        # `enforce_file_format=True` écrit le préambule de 128 octets et le
-        # marqueur « DICM ». Sans lui le fichier n'est pas conforme Part 10 et
-        # ne se relit qu'avec `force=True` — y compris par les visionneuses.
-        ds.save_as(str(chemin), enforce_file_format=True)
-        self._controler(chemin, nouvel_uid)
-        return chemin
+        return ds
 
     @staticmethod
     def _controler(chemin, uid_attendu):

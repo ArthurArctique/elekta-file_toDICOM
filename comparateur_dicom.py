@@ -41,22 +41,27 @@ GRIS = "#9aa0a6"
 VIDE = "—"
 
 
-def profil(chemin):
-    """Un plan, aplati en séries comparables. `None` si illisible."""
+def profil(source, nom=None):
+    """Un plan, aplati en séries comparables.
+
+    `source` est un chemin **ou** un dataset pydicom déjà en mémoire : comparer
+    des délivrances tout juste reconstituées n'a pas à passer par le disque.
+    """
+    etiquette = nom or (source.name if isinstance(source, pathlib.Path)
+                        else pathlib.Path(str(source)).name)
     try:
-        plan = LecteurRtplan(chemin)
+        plan = LecteurRtplan(source)
         t = plan.trajectoire()
     except SystemExit as erreur:
-        return {"nom": pathlib.Path(chemin).name, "erreur": str(erreur)}
+        return {"nom": etiquette, "erreur": str(erreur)}
     except Exception as erreur:
-        return {"nom": pathlib.Path(chemin).name,
-                "erreur": f"{type(erreur).__name__} : {erreur}"}
+        return {"nom": etiquette, "erreur": f"{type(erreur).__name__} : {erreur}"}
 
     ds = plan.ds
     derive = (str(getattr(ds, "ApprovalStatus", "")) == "UNAPPROVED"
               and "erive" in str(getattr(ds, "RTPlanDescription", "")))
     return {
-        "nom": pathlib.Path(chemin).name, "chemin": str(chemin), "ds": ds,
+        "nom": etiquette, "chemin": str(getattr(plan, "chemin", etiquette)), "ds": ds,
         "role": "délivré" if derive else "plan",
         "mu": t["mu"], "lames": t["lames"], "bras": t["bras"],
         "decoupe": t["decoupe"], "mu_total": plan.mu_total(),

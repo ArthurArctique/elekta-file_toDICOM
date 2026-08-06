@@ -528,29 +528,65 @@ class Interface:
 
         @app.callback(
             Output("onglets", "value", allow_duplicate=True),
-            Output("cmp_chemin_ref", "value", allow_duplicate=True),
-            Output("cmp_chemin_dossier", "value", allow_duplicate=True),
-            Output("cmp_charger", "n_clicks", allow_duplicate=True),
+            Output("cmp_inventaire", "data", allow_duplicate=True),
+            Output("cmp_reference", "options", allow_duplicate=True),
+            Output("cmp_reference", "value", allow_duplicate=True),
+            Output("cmp_compares", "options", allow_duplicate=True),
+            Output("cmp_compares", "value", allow_duplicate=True),
+            Output("cmp_etat", "children", allow_duplicate=True),
+            Output("cmp_contenu", "style", allow_duplicate=True),
             Output("etat_action", "children"),
             Input("comparer_selection", "n_clicks"),
-            State("trouvees", "selected_rows"), State("chemin_sortie", "value"),
-            State("cmp_charger", "n_clicks"), prevent_initial_call=True)
-        def _comparer_selection(_c, choisies, sortie, clics):
-            """Exporte la sélection, puis bascule sur l'onglet Comparer.
+            State("trouvees", "selected_rows"), prevent_initial_call=True)
+        def _comparer_selection(_c, choisies):
+            """Compare **exactement** les séances cochées, sans rien écrire.
 
-            Comparer suppose des DICOM : on les écrit d'abord, dans le même
-            dossier de sortie que le bouton d'export, avec les mêmes noms — un
-            second passage réécrit les mêmes fichiers plutôt que d'en empiler.
-            Le compteur de clics de « Charger » est incrémenté pour déclencher
-            le chargement de l'onglet sans que l'utilisateur ait à y toucher.
+            Les plans délivrés sont reconstitués en mémoire — `_substituer` puis
+            `EcrivainDicom.preparer`, qui donne l'identité neuve sans passer par
+            le disque. Charger un dossier reviendrait à comparer tout ce qu'il
+            contient, y compris des exports précédents étrangers à la sélection.
             """
-            dossier, ecrits, erreur = exporter(choisies, sortie)
-            if erreur:
-                return "plan", "", "", clics or 0, erreur
-            return ("comparer", str(self.chaine.plan.chemin), str(dossier),
-                    (clics or 0) + 1,
-                    html.Div(f"✅ {len(ecrits)} fichier(s) écrit(s), "
-                             "comparaison chargée dans l'onglet Comparer."))
+            rien = ("plan", [], [], None, [], [], "", {"display": "none"})
+            if not self.appariees or self.chaine is None:
+                return rien + ("Chercher des séances d'abord.",)
+            if not choisies:
+                return rien + ("Aucune séance sélectionnée.",)
+
+            ecrivain = EcrivainDicom()
+            profils, ordre = {}, []
+            reference = self.chaine.plan.chemin.name
+            profils[reference] = profil(self.chaine.plan.chemin, nom=reference)
+            ordre.append(reference)
+
+            for rang in sorted(choisies):
+                seance = self.appariees[rang]
+                try:
+                    ds = ecrivain.preparer(
+                        self.chaine._substituer(seance),
+                        f"Derive de {len(seance['fichiers'])} log(s) machine. "
+                        "Analyse uniquement.")
+                except Exception as erreur:
+                    return rien + (f"❌ séance {rang + 1} : "
+                                   f"{type(erreur).__name__} : {erreur}",)
+                nom = f"séance {rang + 1} · {seance['debut']:%Y-%m-%d %H:%M}"
+                profils[nom] = profil(ds, nom=nom)
+                ordre.append(nom)
+
+            self.profils, self.ordre = profils, ordre
+            inventaire = [{
+                "fichier": p["nom"], "rôle": p.get("role", VIDE),
+                "faisceaux": len(p["decoupe"]) if not p["erreur"] else VIDE,
+                "points de contrôle": len(p["lames"]) if not p["erreur"] else VIDE,
+                "MU": f"{p['mu_total']:.1f}" if not p["erreur"] else VIDE,
+                "lecture": p["erreur"] or "ok",
+            } for p in (profils[n] for n in ordre)]
+
+            return ("comparer", inventaire, ordre, reference, ordre, ordre[1:],
+                    f"✅ {len(ordre) - 1} séance(s) comparée(s) à "
+                    f"{reference} · reconstituées en mémoire, rien n'a été écrit",
+                    {"display": "block"},
+                    html.Div(f"✅ {len(ordre) - 1} séance(s) envoyée(s) vers "
+                             "l'onglet Comparer."))
 
     # ------------------------------------------------------------ comparaison
 
