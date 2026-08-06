@@ -128,6 +128,104 @@ def escalier(positions, bornes):
     return xs, ys
 
 
+def figure_ecart(profils, reference, choisis, etat):
+    figure = go.Figure()
+    ref = profils[reference]
+    for rang, nom in enumerate(choisis):
+        if nom == reference or etat.get(nom):
+            continue
+        medianes, _, _ = ecarts(ref, profils[nom])
+        figure.add_trace(go.Scatter(
+            x=ref["mu"], y=medianes, mode="lines", name=nom,
+            line={"color": COULEURS[rang % len(COULEURS)], "width": 1.8},
+            hovertemplate="%{x:.0f} MU · %{y:.2f} mm<extra>" + nom + "</extra>"))
+    for _, _, fin in ref["decoupe"][:-1]:
+        figure.add_vline(x=ref["mu"][fin - 1],
+                         line={"width": 1, "dash": "dot", "color": GRIS})
+    figure.update_layout(
+        xaxis_title="MU cumulées (référence)",
+        yaxis_title="écart des lames, médiane (mm)",
+        height=320, template="plotly_white",
+        margin={"l": 60, "r": 20, "t": 20, "b": 45},
+        legend={"orientation": "h", "y": -0.25})
+    return figure
+
+def figure_bras(profils, reference, choisis, etat):
+    figure = go.Figure()
+    ref = profils[reference]
+    for rang, nom in enumerate(choisis):
+        if nom == reference or etat.get(nom):
+            continue
+        # écart angulaire signé, ramené dans ]-180, 180]
+        brut = profils[nom]["bras"] - ref["bras"]
+        figure.add_trace(go.Scatter(
+            x=ref["mu"], y=(brut + 180.0) % 360.0 - 180.0, mode="lines",
+            name=nom, line={"color": COULEURS[rang % len(COULEURS)], "width": 1.5}))
+    figure.update_layout(
+        xaxis_title="MU cumulées (référence)", yaxis_title="écart de bras (°)",
+        height=250, template="plotly_white", showlegend=False,
+        margin={"l": 60, "r": 20, "t": 20, "b": 45})
+    return figure
+
+def figure_superposition(profils, reference, choisis, etat, index):
+    figure = go.Figure()
+    ref = profils[reference]
+    bornes = ref["bornes"]
+    index = min(index, len(ref["lames"]) - 1)
+
+    if bornes:
+        # En repère Delivery le banc 1 est compté à l'envers du DICOM : on
+        # le renvoie pour redessiner les deux bords dans le même repère.
+        for banc, signe in ((0, 1.0), (1, -1.0)):
+            xs, ys = escalier(signe * ref["lames"][index][:, banc], bornes)
+            figure.add_trace(go.Scatter(
+                x=xs, y=ys, mode="lines", name=f"{reference} (réf.)",
+                line={"color": GRIS, "width": 2.5},
+                showlegend=banc == 0, legendgroup="ref"))
+        for rang, nom in enumerate(choisis):
+            if nom == reference or etat.get(nom):
+                continue
+            couleur = COULEURS[rang % len(COULEURS)]
+            for banc, signe in ((0, 1.0), (1, -1.0)):
+                xs, ys = escalier(signe * profils[nom]["lames"][index][:, banc],
+                                  bornes)
+                figure.add_trace(go.Scatter(
+                    x=xs, y=ys, mode="lines", name=nom,
+                    line={"color": couleur, "width": 1.4},
+                    showlegend=banc == 0, legendgroup=nom))
+
+    figure.update_layout(
+        height=540, template="plotly_white",
+        margin={"l": 55, "r": 20, "t": 20, "b": 45},
+        legend={"orientation": "h", "y": -0.14},
+        xaxis={"title": "x (mm)", "range": [-210, 210], "constrain": "domain"},
+        yaxis={"title": "y (mm)", "range": [-210, 210],
+               "scaleanchor": "x", "scaleratio": 1})
+    return figure
+
+def bilan(profils, reference, choisis, etat):
+    ref = profils[reference]
+    lignes = []
+    for nom in choisis:
+        if nom == reference:
+            continue
+        p = profils[nom]
+        if etat.get(nom):
+            lignes.append({"fichier": nom, "rôle": p.get("role", VIDE),
+                           "MU": VIDE, "médiane": VIDE, "p95": VIDE,
+                           "max": VIDE, "écart de MU": etat[nom]})
+            continue
+        _, _, toutes = ecarts(ref, p)
+        lignes.append({
+            "fichier": nom, "rôle": p["role"], "MU": f"{p['mu_total']:.1f}",
+            "médiane": f"{np.median(toutes):.2f} mm",
+            "p95": f"{np.percentile(toutes, 95):.2f} mm",
+            "max": f"{toutes.max():.2f} mm",
+            "écart de MU": f"{100 * (p['mu_total'] - ref['mu_total']) / ref['mu_total']:+.2f} %",
+        })
+    return lignes
+
+
 class Comparateur:
     """La page : deux chemins à choisir, puis les écarts sous trois angles."""
 
@@ -228,104 +326,19 @@ class Comparateur:
                   "fontFamily": "system-ui, -apple-system, sans-serif",
                   "background": "#fff", "color": "#1a1a1a", "minHeight": "100vh"})
 
-    # ---- figures ----
+    # ---- figures : les fonctions de module font le travail ----
 
     def _figure_ecart(self, reference, choisis, etat):
-        figure = go.Figure()
-        ref = self.profils[reference]
-        for rang, nom in enumerate(choisis):
-            if nom == reference or etat.get(nom):
-                continue
-            medianes, _, _ = ecarts(ref, self.profils[nom])
-            figure.add_trace(go.Scatter(
-                x=ref["mu"], y=medianes, mode="lines", name=nom,
-                line={"color": COULEURS[rang % len(COULEURS)], "width": 1.8},
-                hovertemplate="%{x:.0f} MU · %{y:.2f} mm<extra>" + nom + "</extra>"))
-        for _, _, fin in ref["decoupe"][:-1]:
-            figure.add_vline(x=ref["mu"][fin - 1],
-                             line={"width": 1, "dash": "dot", "color": GRIS})
-        figure.update_layout(
-            xaxis_title="MU cumulées (référence)",
-            yaxis_title="écart des lames, médiane (mm)",
-            height=320, template="plotly_white",
-            margin={"l": 60, "r": 20, "t": 20, "b": 45},
-            legend={"orientation": "h", "y": -0.25})
-        return figure
+        return figure_ecart(self.profils, reference, choisis, etat)
 
     def _figure_bras(self, reference, choisis, etat):
-        figure = go.Figure()
-        ref = self.profils[reference]
-        for rang, nom in enumerate(choisis):
-            if nom == reference or etat.get(nom):
-                continue
-            # écart angulaire signé, ramené dans ]-180, 180]
-            brut = self.profils[nom]["bras"] - ref["bras"]
-            figure.add_trace(go.Scatter(
-                x=ref["mu"], y=(brut + 180.0) % 360.0 - 180.0, mode="lines",
-                name=nom, line={"color": COULEURS[rang % len(COULEURS)], "width": 1.5}))
-        figure.update_layout(
-            xaxis_title="MU cumulées (référence)", yaxis_title="écart de bras (°)",
-            height=250, template="plotly_white", showlegend=False,
-            margin={"l": 60, "r": 20, "t": 20, "b": 45})
-        return figure
+        return figure_bras(self.profils, reference, choisis, etat)
 
     def _figure_superposition(self, reference, choisis, etat, index):
-        figure = go.Figure()
-        ref = self.profils[reference]
-        bornes = ref["bornes"]
-        index = min(index, len(ref["lames"]) - 1)
-
-        if bornes:
-            # En repère Delivery le banc 1 est compté à l'envers du DICOM : on
-            # le renvoie pour redessiner les deux bords dans le même repère.
-            for banc, signe in ((0, 1.0), (1, -1.0)):
-                xs, ys = escalier(signe * ref["lames"][index][:, banc], bornes)
-                figure.add_trace(go.Scatter(
-                    x=xs, y=ys, mode="lines", name=f"{reference} (réf.)",
-                    line={"color": GRIS, "width": 2.5},
-                    showlegend=banc == 0, legendgroup="ref"))
-            for rang, nom in enumerate(choisis):
-                if nom == reference or etat.get(nom):
-                    continue
-                couleur = COULEURS[rang % len(COULEURS)]
-                for banc, signe in ((0, 1.0), (1, -1.0)):
-                    xs, ys = escalier(signe * self.profils[nom]["lames"][index][:, banc],
-                                      bornes)
-                    figure.add_trace(go.Scatter(
-                        x=xs, y=ys, mode="lines", name=nom,
-                        line={"color": couleur, "width": 1.4},
-                        showlegend=banc == 0, legendgroup=nom))
-
-        figure.update_layout(
-            height=540, template="plotly_white",
-            margin={"l": 55, "r": 20, "t": 20, "b": 45},
-            legend={"orientation": "h", "y": -0.14},
-            xaxis={"title": "x (mm)", "range": [-210, 210], "constrain": "domain"},
-            yaxis={"title": "y (mm)", "range": [-210, 210],
-                   "scaleanchor": "x", "scaleratio": 1})
-        return figure
+        return figure_superposition(self.profils, reference, choisis, etat, index)
 
     def _bilan(self, reference, choisis, etat):
-        ref = self.profils[reference]
-        lignes = []
-        for nom in choisis:
-            if nom == reference:
-                continue
-            p = self.profils[nom]
-            if etat.get(nom):
-                lignes.append({"fichier": nom, "rôle": p.get("role", VIDE),
-                               "MU": VIDE, "médiane": VIDE, "p95": VIDE,
-                               "max": VIDE, "écart de MU": etat[nom]})
-                continue
-            _, _, toutes = ecarts(ref, p)
-            lignes.append({
-                "fichier": nom, "rôle": p["role"], "MU": f"{p['mu_total']:.1f}",
-                "médiane": f"{np.median(toutes):.2f} mm",
-                "p95": f"{np.percentile(toutes, 95):.2f} mm",
-                "max": f"{toutes.max():.2f} mm",
-                "écart de MU": f"{100 * (p['mu_total'] - ref['mu_total']) / ref['mu_total']:+.2f} %",
-            })
-        return lignes
+        return bilan(self.profils, reference, choisis, etat)
 
     # ---- callbacks ----
 
@@ -338,8 +351,9 @@ class Comparateur:
             prevent_initial_call=True)
         def _parcourir(_a, _b, ref, dossier):
             if callback_context.triggered_id == "choisir_ref":
-                return demander_chemin() or ref or "", dossier or ""
-            return ref or "", demander_chemin(dossier=True) or dossier or ""
+                return demander_chemin(genre="dcm") or ref or "", dossier or ""
+            return ref or "", demander_chemin(
+                dossier=True, titre="Dossier des plans délivrés") or dossier or ""
 
         @self.app.callback(
             Output("inventaire", "data"), Output("cartes", "children"),

@@ -144,8 +144,18 @@ class CacheSeances:
         return sorted(lecture._fichiers, key=lambda f: f["debut"])
 
 
-def demander_chemin(dossier=False):
+FILTRES = {
+    "zip": [("Archives SDD", "*.zip"), ("Tous les fichiers", "*.*")],
+    "dcm": [("RT Plan DICOM", "*.dcm"), ("Tous les fichiers", "*.*")],
+}
+
+
+def demander_chemin(dossier=False, genre="zip", titre=None):
     """Ouvre la boîte de dialogue du système et rend le chemin choisi.
+
+    `genre` choisit le filtre d'extensions — `"zip"` pour une archive SDD,
+    `"dcm"` pour un RT Plan. Sans ce paramètre, tous les appelants héritaient du
+    filtre `*.zip` et un sélecteur de DICOM ne montrait que des archives.
 
     L'application tourne sur le poste de l'utilisateur : le dialogue s'ouvre
     donc là où il regarde. C'est ce qui permet d'éviter `dcc.Upload`, qui ferait
@@ -157,9 +167,14 @@ def demander_chemin(dossier=False):
 
     Rend une chaîne vide si l'utilisateur annule ou si Tk est absent.
     """
-    ouvrir = ("askdirectory(title='Choisir un dossier de .trf')" if dossier else
-              "askopenfilename(title='Localiser l\\'archive SDD', "
-              "filetypes=[('Archives SDD', '*.zip'), ('Tous les fichiers', '*.*')])")
+    if dossier:
+        intitule = titre or "Choisir un dossier"
+        ouvrir = f"askdirectory(title={intitule!r})"
+    else:
+        intitule = titre or ("Localiser l'archive SDD" if genre == "zip"
+                             else "Choisir un RT Plan DICOM")
+        ouvrir = (f"askopenfilename(title={intitule!r}, "
+                  f"filetypes={FILTRES.get(genre, FILTRES['zip'])!r})")
     code = ("import tkinter as tk\n"
             "from tkinter.filedialog import askopenfilename, askdirectory\n"
             "racine = tk.Tk(); racine.withdraw()\n"
