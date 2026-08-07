@@ -1,39 +1,47 @@
 # elekta-file_toDICOM
 
-Exploiter les logs machine d'un accélérateur Elekta (`.trf`) pour reconstituer ce
-qui a été **réellement délivré**, et le confronter au **plan de traitement**, au
-niveau des points de contrôle.
+Exploiter les **logs machine** d'un accélérateur Elekta (`.trf`) pour reconstituer
+ce qui a été réellement délivré, et le confronter au **plan de traitement**, point
+de contrôle par point de contrôle.
 
-Parc visé : **Versa HD**, tête Agility, encodage TRF **v3**.
+Parc visé : **Versa HD**, tête Agility (80 paires de lames), encodage TRF v3.
 
 ---
 
-## Bilan
+## Ce que fait l'outil
 
-### Ce qui fonctionne, sur données réelles
+```
+   archive SDD (.zip)                        RT Plan (.dcm)
+          │                                        │
+          │  ArchiveTrf                            │  LecteurRtplan
+          │  décode, regroupe                      │  MU totales
+          ▼                                        ▼  + empreinte du champ
+      les séances                            ce qu'on cherche
+   (fichiers recollés)                               │
+          │                                          │
+          └──────────────► correspondantes() ◄───────┘
+                                  │
+                                  │  MU à 1 % près
+                                  │  dessin du champ sous 3 mm
+                                  ▼
+                    les séances de CE plan (ses fractions)
+                                  │
+                                  │  Chaine — substitution :
+                                  │  la grille du plan est gardée,
+                                  │  le mesuré y est injecté
+                                  ▼
+                     RT Plan dérivé, en mémoire
+                                  │
+                                  │  EcrivainDicom
+                                  │  identité neuve, UNAPPROVED
+                                  ▼
+                        .dcm sur disque, ou comparé directement
+```
 
-| | |
-|---|---|
-| **Décoder un TRF** | 420 fichiers d'une semaine lus, **0 illisible**. Toutes les colonnes, tous les octets attribués |
-| **Reconstituer les séances** | Découpage par l'état final de la machine, y compris les séances interrompues réparties sur plusieurs fichiers |
-| **Retrouver les fractions d'un plan** | Un plan RTP confronté à une semaine de logs rend l'historique de ses délivrances |
-| **Lire un plan RTP Connect** | Export Mosaiq décodé, conventions détectées et non supposées |
-
-### Ce qui est validé sur données de référence
-
-| | |
-|---|---|
-| **Comparer les points de contrôle** | Écart plan/délivré mesuré : **0,18 mm** médian sur les lames exposées |
-| **Produire un RT Plan « délivré »** | En VMAT, par substitution dans la grille du plan — aller-retour exact |
-| **Séparer le physique du méthodologique** | Le retard du servomoteur explique **95,9 %** de l'écart observé |
-
-### Ce qui bloque
-
-**Une chaîne reproductible d'obtention des plans.** Un `.rtp` exporté à la main
-valide la méthode, il n'industrialise rien. Les deux voies — export DICOM depuis
-Mosaiq, ou accès SQL à sa base — sont aujourd'hui fermées.
-
-C'est le seul verrou. Le reste est de l'ingénierie dont le principe est établi.
+Le point clé : **on ne reconstruit pas le plan, on y substitue**. Un TRF contient
+2 700 échantillons là où le plan a 111 points de contrôle. Repartir de zéro
+donnerait vingt fois trop de points ; garder la grille du plan et y interpoler le
+mesuré donne un fichier directement comparable à l'original.
 
 ---
 
@@ -44,49 +52,123 @@ from visualisation import Interface
 Interface().lancer()          # puis http://127.0.0.1:8050
 ```
 
-Tout se fait dans la page : localiser l'archive SDD, parcourir ses séances,
-confronter un RT Plan, exporter les fractions retenues, comparer. Rien n'est
-téléversé — l'application tourne sur le poste et lit les fichiers là où ils sont.
+Tout se fait dans la page : localiser l'archive, parcourir ses séances,
+confronter un RT Plan, exporter les fractions retenues, comparer. **Rien n'est
+téléversé** — l'application tourne sur le poste et lit les fichiers là où ils
+sont, une archive SDD pesant plusieurs gigaoctets.
 
-En script :
+En script, via `main.py` : renseigner les trois chemins en tête, décommenter
+l'appel voulu.
 
 ```python
 from noyau import Chaine
 Chaine("plan.dcm", "SDD+xxxx.zip", sortie="delivres/").executer()
 ```
 
-`python3 main.py` en fait la démonstration sur les données publiques.
-
-**Dépendances** : `numpy`, `pydicom`, `pymedphys` pour le noyau ; `dash` et
-`plotly` en plus pour les pages.
-
-⚠️ Le cache `seances/` et les DICOM produits contiennent des données patient.
-Le `.gitignore` les exclut, ainsi que tout `.trf`, `.dcm` et `.rtp`.
+**Dépendances** : `numpy`, `pydicom`, `pymedphys` ; `dash` et `plotly` en plus
+pour les pages.
 
 ---
 
-## L'outil
+## Les fichiers, et comment ils s'enchaînent
 
 ### `noyau/` — la chaîne
 
-| Module | Rôle |
-|---|---|
-| `conventions.py` | Noms de colonnes, géométrie visée, seuils, conversions de repère |
-| `archive_trf.py` | **`ArchiveTrf`** — les TRF d'un zip, regroupés en séances, filtrés sur des critères **reçus** |
-| `lecteur_rtplan.py` | **`LecteurRtplan`** — un RT Plan : ses tags, sa trajectoire, son `ds` brut |
-| `ecrivain_dicom.py` | **`EcrivainDicom`** — identité neuve au dérivé, `preparer()` sans écrire ou `ecrire()` avec contrôle |
-| `chaine.py` | **`Chaine`** — orchestre les trois |
+| Module | Ce qu'il fait | Qui l'appelle |
+|---|---|---|
+| `conventions.py` | Noms de colonnes du TRF, géométrie visée, seuils, conversions de repère | tous les autres |
+| `archive_trf.py` | **`ArchiveTrf`** : décode les TRF d'un zip, les regroupe en séances, et rend celles qui correspondent aux critères **qu'on lui donne** — elle ne lit jamais un plan | `Chaine`, les pages |
+| `lecteur_rtplan.py` | **`LecteurRtplan`** : un RT Plan — ses MU, sa trajectoire dépliée, son `ds` brut | `Chaine`, le comparateur |
+| `ecrivain_dicom.py` | **`EcrivainDicom`** : donne au dérivé une identité neuve. `preparer()` sans écrire, `ecrire()` avec contrôle du fichier écrit | `Chaine`, les pages |
+| `chaine.py` | **`Chaine`** : orchestre les trois — trouve les séances du plan, y substitue le mesuré, écrit | `main.py`, l'interface |
+
+La séparation qui compte : **`ArchiveTrf` ignore tout des plans**. Elle reçoit un
+total de MU et une empreinte de champ, et rend les séances compatibles. C'est ce
+qui permet de la tester seule, et de changer le critère sans y toucher.
 
 ### `visualisation/` — les pages
 
-| Module | Rôle |
+| Module | Ce qu'il fait |
 |---|---|
-| **`interface.py`** | **`Interface`** — les trois onglets autour d'une archive chargée une fois : Séances · Plan → export sélectif · Comparer |
-| `visualiseur_seances.py` | **`Visualiseur`** — le seul onglet des séances, lançable à part. Met en cache dans `seances/` |
-| `comparateur_dicom.py` | **`Comparateur`** — le seul onglet de comparaison, lançable à part |
+| `interface.py` | **`Interface`** : les trois onglets autour d'une archive chargée une fois — Séances · Plan → export · Comparer |
+| `visualiseur_seances.py` | **`Visualiseur`** : les séances d'une archive, TRF par TRF. Met en cache dans `seances/` pour que les lancements suivants soient immédiats |
+| `comparateur_dicom.py` | **`Comparateur`** : le plan face à ses délivrances, et les délivrances entre elles |
 
-`main.py`, à la racine, ne contient aucune logique : il montre la chaîne
-complète puis les mêmes étapes une à une.
+Ces pages **ne contiennent aucune logique métier** : le découpage en séances, la
+lecture des plans et la substitution viennent tous de `noyau`. Les deux dernières
+sont aussi lançables seules.
+
+### `main.py`
+
+Le point d'entrée : trois chemins en tête, trois fonctions à décommenter —
+ouvrir l'interface, exporter les séances d'un plan, ou dérouler les étapes une à
+une pour voir ce que chaque classe apporte.
+
+---
+
+## Ce qui est fiable, et comment on le sait
+
+Toutes les mesures ci-dessous sont reproductibles sur le jeu de test public de
+pymedphys.
+
+| | Mesuré |
+|---|---|
+| **Décodage du TRF** | Confronté colonne par colonne à pymedphys : **350/350** colonnes identiques au bit près sur un fichier v1, **354/354** sur un v3 |
+| **Reconnaître les séances d'un plan** | **0,40 – 0,49 mm** d'écart de dessin face au bon plan, **12,8 mm** face à un autre traitement. Le seuil est à 3 mm, largement entre les deux |
+| **Recoller une séance interrompue** | Une séance éclatée en 4 fragments rend le même résultat qu'une séance intacte : 0,49 mm contre 0,40 et 0,46 |
+| **Écart plan / délivré** | **0,22 mm** médian sur les lames dans le champ, p95 1,2 mm |
+| **Écart entre fractions** | **0,07 – 0,10 mm** — les fractions se ressemblent deux fois plus entre elles qu'elles ne ressemblent au plan |
+| **Aller-retour DICOM** | Ce qui est écrit est relu à l'identique ; chaque fichier produit est relu sans `force=True` et son identité vérifiée |
+
+Sur une semaine réelle de logs (420 fichiers, une machine) : **0 fichier
+illisible**, séances reconstituées y compris les interrompues.
+
+La dernière ligne du tableau mérite un mot : **c'est la comparaison des fractions
+entre elles qui est le meilleur indicateur.** Un écart au plan peut être une
+propriété normale de la machine — le retard du servomoteur en est une, il explique
+l'essentiel de l'écart observé. Une fraction qui s'écarte *des autres* signale au
+contraire quelque chose de ce jour-là.
+
+---
+
+## Les limites
+
+Elles sont réelles, documentées en tête de `noyau/chaine.py`, et non corrigées.
+
+**Les MU par faisceau sont réparties au prorata du plan.** Le total vient du log,
+mais sa répartition entre faisceaux suit celle du plan. Un plan 100 + 200 MU
+délivré 90 + 200 ressortira en 96,7 + 193,3 : total juste, répartition fausse.
+`BeamMeterset` ne doit donc pas se lire comme « les MU relevées pour ce faisceau ».
+
+**L'axe des MU comporte des plateaux.** Entre deux segments, les lames se
+repositionnent sans que la dose avance : 54 % des échantillons partagent une MU
+déjà vue, et le plus long plateau dure 18 s pendant lesquelles une lame parcourt
+108 mm. L'interpolation y retient la géométrie d'arrivée — défendable, mais subi
+plutôt que choisi.
+
+**Seuls les tags déjà présents dans un point de contrôle sont réécrits.** Un plan
+qui omet `GantryAngle` sur un point inchangé ne peut pas recevoir l'angle mesuré à
+cet endroit. La structure du plan est préservée au prix de la fidélité.
+
+**Les sens de rotation ne sont pas reconstruits** : `GantryRotationDirection`
+reste celui du plan alors que les angles, eux, sont mesurés.
+
+**L'appariement repose sur deux critères** — MU totales et médiane du dessin du
+champ. La séparation mesurée est large, mais une médiane peut diluer quelques
+lames très fausses.
+
+**Géométrie figée à 80 paires de lames.** Une autre configuration est refusée à
+la lecture, avec un message clair, plutôt que silencieusement mal découpée.
+
+---
+
+## Ce qui bloque encore
+
+**Une chaîne reproductible d'obtention des plans.** Un `.rtp` exporté à la main
+valide la méthode, il n'industrialise rien. Les deux voies — export DICOM depuis
+Mosaiq, ou accès SQL à sa base — sont aujourd'hui fermées.
+
+C'est le seul verrou. Le reste est de l'ingénierie dont le principe est établi.
 
 ---
 
@@ -136,25 +218,6 @@ Chacun documenté en tête de fichier, dans `exploration/`.
 | [RESULTATS_RECHERCHE.md](RESULTATS_RECHERCHE.md) | Le détail des mesures, corrections comprises |
 | [data/README.md](data/README.md) | Provenance des jeux de données publics et leurs limites |
 | `archives/` | Documents dépassés, conservés pour l'historique |
-
----
-
-## Le principe, en trois points
-
-**Le seul axe commun est la dose cumulée.** Le plan l'exprime en poids relatif de
-0 à 1, le log en MU absolues. Le plan n'a pas de notion de temps, le log en a une
-à la milliseconde. Toute mise en correspondance passe par les MU.
-
-**On ne reconstruit pas le plan, on y substitue.** Produire un RT Plan à partir
-du log en repartant de zéro échoue en VMAT et donne vingt fois trop de points de
-contrôle. Garder la grille du plan et y injecter les valeurs mesurées, interpolées
-sur l'axe des MU, contourne le problème par construction — c'est aussi ce que
-fait le précédent publié le plus proche.
-
-**Aucune convention n'est supposée.** Ordre des bancs de lames, sens de
-numérotation, unités, nature des MU : tout est détecté depuis les données et
-affiché. Une convention mal devinée ne fait pas planter, elle donne des chiffres
-faux et vraisemblables — c'est arrivé, à 48 mm près.
 
 ---
 
@@ -220,3 +283,24 @@ dérivent ensemble sans que rien ne le signale.
 C'est l'avertissement explicite de la documentation pymedphys — *« it is not the
 intent of this project to replace patient specific QA measurements »* — et la
 raison pour laquelle le contrôle par mesure indépendante garde sa raison d'être.
+
+Les conventions géométriques — ordre des bancs de lames, signe des mâchoires —
+sont validées par aller-retour contre pymedphys, ce qui prouve leur cohérence,
+pas leur justesse physique. Seule une mesure indépendante sur un champ
+franchement asymétrique le ferait.
+
+---
+
+## Les fichiers produits
+
+⚠️ Les RT Plan dérivés sont des **documents d'analyse**. Ils reçoivent un
+`SOPInstanceUID` et un `SeriesInstanceUID` neufs — ils ne peuvent donc pas écraser
+le plan d'origine —, `ApprovalStatus = UNAPPROVED` et un libellé suffixé `_DEL`.
+
+Ce marquage **ne garantit pas leur rejet par un système clinique** : ils gardent
+leur SOP Class et restent importables. La barrière doit être l'environnement —
+répertoire isolé, aucune route DICOM vers le réseau clinique.
+
+Le cache `seances/` contient des copies de TRF réels, et les `.dcm` produits
+portent les identifiants du patient d'origine. Le `.gitignore` exclut `*.trf`,
+`*.dcm`, `*.zip`, `data/`, `seances/` et `donnee_patient/`.
