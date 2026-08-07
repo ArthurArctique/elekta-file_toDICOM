@@ -1,9 +1,10 @@
-"""Démonstration : comment les classes s'utilisent, et dans quel ordre.
+"""Point d'entrée : les chemins en tête, un appel par usage.
 
     python3 main.py
 
-Ce fichier ne contient aucune logique — il montre. Le dépôt tient en deux
-paquets :
+Renseigner les trois chemins ci-dessous, puis décommenter en bas l'appel voulu.
+
+Le code vit dans deux paquets :
 
     noyau/          la chaîne, une classe par module
         conventions      noms de colonnes, géométrie visée, seuils, conversions
@@ -17,9 +18,6 @@ paquets :
         visualiseur_seances  les séances d'une archive
         comparateur_dicom    le plan face à ses délivrances
 
-    from visualisation import Interface
-    Interface().lancer()
-
 ⚠️ Les plans produits sont des documents d'analyse : UID neufs et
 `ApprovalStatus = UNAPPROVED` les distinguent de l'original, mais ce marquage ne
 garantit pas leur rejet par un système clinique. La barrière doit être
@@ -28,69 +26,84 @@ l'environnement — répertoire isolé, aucune route DICOM vers le réseau clini
 
 import pathlib
 
+# --------------------------------------------------------------- mes chemins
+# Une archive SDD (.zip) ou un dossier de .trf.
+ARCHIVE = "data/vmat_pymedphys/trf"
+# Le RT Plan à retrouver dans cette archive.
 PLAN = "data/vmat_pymedphys/979797_VMAT.dcm"
-ARCHIVE = "data/vmat_pymedphys/trf"          # un dossier de .trf ou un zip SDD
+# Où écrire les plans dérivés.
 SORTIE = "delivres"
 
 
-def tout_en_un():
-    """Le chemin le plus court : `Chaine` fait les trois étapes elle-même."""
+def ouvrir_interface(port=8050):
+    """Les trois onglets — séances, appariement et export, comparaison.
+
+    Le chemin de l'archive n'est qu'un pré-remplissage : tout se choisit dans
+    la page.
+    """
+    from visualisation import Interface
+
+    Interface(archive=ARCHIVE, port=port).lancer()
+
+
+def exporter_les_seances():
+    """Retrouve les séances de PLAN dans ARCHIVE et les écrit dans SORTIE."""
     from noyau import Chaine
 
-    print("=" * 68, "\n1. LA CHAÎNE COMPLÈTE\n" + "=" * 68)
-    Chaine(PLAN, ARCHIVE, sortie=SORTIE).executer()
+    return Chaine(PLAN, ARCHIVE, sortie=SORTIE).executer()
 
 
-def etape_par_etape():
-    """Les mêmes étapes, à la main, pour voir ce que chaque classe apporte."""
+def inspecter():
+    """Les mêmes étapes à la main, pour voir ce que chaque classe apporte."""
     from noyau import (SONDAGES, ArchiveTrf, Chaine, EcrivainDicom,
                        LecteurRtplan)
 
-    print("\n" + "=" * 68, "\n2. ÉTAPE PAR ÉTAPE\n" + "=" * 68)
-
-    # --- le plan : ce qu'on cherche à retrouver dans les logs ---
     plan = LecteurRtplan(PLAN)
     mu = plan.mu_total()
-    print(f"\nPlan   {plan.chemin.name}")
-    print(f"       {len(plan.grille())} faisceau(x) · {mu:.1f} MU")
-    print(f"       MU par faisceau : {plan.mu_par_faisceau()}")
     trajet = plan.trajectoire()
-    print(f"       trajectoire : {len(trajet['mu'])} points · "
-          f"bras {trajet['bras'].min():.1f}° → {trajet['bras'].max():.1f}°")
+    print(f"\nPlan   {plan.chemin.name}")
+    print(f"       {len(plan.grille())} faisceau(x) · {mu:.1f} MU · "
+          f"{len(trajet['mu'])} points de contrôle")
+    print(f"       MU par faisceau : {plan.mu_par_faisceau()}")
 
-    # --- l'archive : elle ne connaît pas le plan, on lui donne les critères ---
     archive = ArchiveTrf(ARCHIVE)
     print(f"\nArchive {ARCHIVE}")
     print(f"        {len(archive._fichiers)} fichier(s) · "
           f"{len(archive.doublons)} doublon(s) écarté(s)")
     for s in archive.seances():
-        print(f"        {s['debut']:%Y-%m-%d %H:%M} · {s['champ']:<10} · "
+        print(f"        {s['debut_local']:%Y-%m-%d %H:%M} · {s['champ']:<12} · "
               f"{s['mu']:>7.1f} MU · {len(s['fichiers'])} fichier(s)")
 
     retenues = archive.correspondantes(mu, plan.empreinte(SONDAGES))
     print(f"\n        {len(retenues)} séance(s) correspondent à ce plan :")
     for s in retenues:
-        print(f"        {s['debut']:%Y-%m-%d %H:%M} · dessin {s['dessin']:.2f} mm")
+        print(f"        {s['debut_local']:%Y-%m-%d %H:%M} · "
+              f"dessin {s['dessin']:.2f} mm")
 
-    # --- la substitution : un dataset en mémoire, écrit seulement si on veut ---
-    chaine = Chaine(PLAN)                    # sans archive : on substitue seulement
-    ecrivain = EcrivainDicom()
-    for s in retenues[:1]:
-        delivre = ecrivain.preparer(chaine._substituer(s), "Demonstration.")
-        print(f"\nDérivé  en mémoire · {delivre.RTPlanLabel} · {delivre.ApprovalStatus}")
-        print(f"        UID {delivre.SOPInstanceUID[-24:]}")
-        print(f"        (rien n'a été écrit — `ecrire()` le ferait)")
+    # Un dérivé complet, en mémoire : `ecrire()` seul le poserait sur disque.
+    if retenues:
+        delivre = EcrivainDicom().preparer(
+            Chaine(PLAN)._substituer(retenues[0]), "Inspection.")
+        print(f"\nDérivé  {delivre.RTPlanLabel} · {delivre.ApprovalStatus} · "
+              f"en mémoire, rien n'a été écrit")
+    return retenues
 
 
-def main():
-    if not pathlib.Path(PLAN).exists():
-        raise SystemExit(f"{PLAN} est absent : lancer d'abord "
-                         "exploration/verification_chaine.py, qui télécharge "
-                         "le jeu de test public.")
-    tout_en_un()
-    etape_par_etape()
-    return 0
+def _verifier_chemins(*chemins):
+    manquants = [c for c in chemins if not pathlib.Path(c).exists()]
+    if manquants:
+        raise SystemExit("Chemin(s) introuvable(s), à corriger en tête de "
+                         "main.py :\n  " + "\n  ".join(manquants))
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # --- décommenter l'appel voulu ---
+
+    _verifier_chemins(ARCHIVE)
+    ouvrir_interface()
+
+    # _verifier_chemins(ARCHIVE, PLAN)
+    # exporter_les_seances()
+
+    # _verifier_chemins(ARCHIVE, PLAN)
+    # inspecter()
