@@ -113,7 +113,7 @@ pymedphys.
 
 | | Mesuré |
 |---|---|
-| **Décodage du TRF** | Confronté colonne par colonne à pymedphys : **350/350** colonnes identiques au bit près sur un fichier v1, **354/354** sur un v3 |
+| **Décodage du TRF** | **Délégué à pymedphys**, l'implémentation de référence — le noyau ne décode pas lui-même. Ce qui est vérifié ici, c'est ce qu'on ajoute par-dessus : la recomposition de l'horodatage machine, identique aux octets bruts, et la somme des MU par faisceau — 994,4 MU retrouvées contre 994,6 annoncées par l'en-tête |
 | **Reconnaître les séances d'un plan** | **0,40 – 0,49 mm** d'écart de dessin face au bon plan, **12,8 mm** face à un autre traitement. Le seuil est à 3 mm, largement entre les deux |
 | **Recoller une séance interrompue** | Une séance éclatée en 4 fragments rend le même résultat qu'une séance intacte : 0,49 mm contre 0,40 et 0,46 |
 | **Écart plan / délivré** | **0,22 mm** médian sur les lames dans le champ, p95 1,2 mm |
@@ -128,6 +128,28 @@ entre elles qui est le meilleur indicateur.** Un écart au plan peut être une
 propriété normale de la machine — le retard du servomoteur en est une, il explique
 l'essentiel de l'écart observé. Une fraction qui s'écarte *des autres* signale au
 contraire quelque chose de ce jour-là.
+
+### Une précision sur les encodages
+
+Un TRF déclare sa version dans son en-tête. Quatre existent, elles ne changent
+que la forme du tableau — pas son contenu :
+
+| Version | Valeurs | Préfixe de ligne | Conséquence |
+|---|---|---|---|
+| 1 | 16 bits | aucun | **pas d'horloge machine** |
+| 2, 3 | 16 bits | 8 octets | horloge en millisecondes |
+| 4 | 32 bits | 8 octets | une colonne de plus, `Mlc Status` |
+
+Le parc visé écrit du **v3**. Les données publiques mêlent v1 et v3, ce qui a
+permis d'éprouver les deux : 350 colonnes et pas d'horloge pour les v1, 354 et
+une horloge pour les v3 — les quatre colonnes d'écart sont justement
+l'horodatage.
+
+Concrètement, sur un fichier **v1** la durée d'un enregistrement retombe sur
+« nombre de lignes × 40 ms » et les coupures d'échantillonnage deviennent
+indétectables. **Les versions 2 et 4 n'ont jamais été rencontrées**, ni dans les
+données publiques ni dans une semaine réelle : leur traitement repose sur la
+table de pymedphys, pas sur une observation.
 
 ---
 
