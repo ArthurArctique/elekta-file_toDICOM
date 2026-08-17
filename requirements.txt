@@ -1,0 +1,28 @@
+# Dépendances de l'outil.
+#
+#     pip install -r requirements.txt
+#
+# Versions sur lesquelles tout a été vérifié : Python 3.11.9, numpy 2.4.2,
+# pydicom 3.0.2, pymedphys 0.41.0, pandas 2.3.3, dash 4.1.0, plotly 6.5.2.
+
+# --- le noyau ---
+
+numpy>=1.24
+pydicom>=3.0          # `save_as(enforce_file_format=...)` date de la 3.0
+pymedphys>=0.41       # décodage TRF ; installe pandas au passage
+
+# `pymedphys.Delivery.to_dicom` casse sous NumPy 2 (`np.array(x, copy=False)`).
+# Le noyau ne l'appelle pas — il fait ses propres conversions de repère dans
+# `noyau/conventions.py`, précisément pour éviter cette dépendance. Aucune
+# raison, donc, d'épingler `numpy<2`.
+
+# pandas n'est jamais importé directement, mais les tables rendues par
+# pymedphys en sont : le préciser évite qu'une future version de pymedphys
+# l'écarte sans qu'on s'en aperçoive.
+pandas>=2.0
+
+# --- les pages (visualisation/) ---
+# Inutiles si l'on ne se sert que du noyau en script.
+
+dash>=3.0             # `Output(..., allow_duplicate=True)` et `callback_context.triggered_id`
+plotly>=5.18
