@@ -65,8 +65,8 @@ from noyau import Chaine
 Chaine("plan.dcm", "SDD+xxxx.zip", sortie="delivres/").executer()
 ```
 
-**Dépendances** : `numpy`, `pydicom`, `pymedphys` ; `dash` et `plotly` en plus
-pour les pages.
+**Dépendances** — `pip install -r requirements.txt` : `numpy`, `pydicom`,
+`pymedphys` pour le noyau ; `dash` et `plotly` en plus pour les pages.
 
 ---
 
