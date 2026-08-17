@@ -29,13 +29,14 @@ import sys
 import numpy as np
 import plotly.graph_objects as go
 from dash import (Dash, Input, Output, State, callback_context,
-                  dash_table, dcc, html)
+                  dash_table, dcc, html, no_update)
 
 # La racine du dépôt sur le chemin : le paquet `noyau` s'importe alors
 # quel que soit le dossier depuis lequel on lance.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from noyau.conventions import PAIRES  # noqa: E402
+from noyau.archive_trf import ArchiveTrf  # noqa: E402
+from noyau.conventions import COL_ETAT, PAS_S  # noqa: E402
 from noyau.lecteur_rtplan import LecteurRtplan  # noqa: E402
 
 from .visualiseur_seances import TABLEAU, carte, demander_chemin  # noqa: E402
@@ -44,12 +45,26 @@ COULEURS = ("#3b6fd4", "#d4663b", "#3ba55c", "#a53b96", "#c9a227", "#00838f")
 GRIS = "#9aa0a6"
 VIDE = "—"
 
+# Le compteur de points de contrôle que la machine tient elle-même. Il ne sert
+# pas au calcul — l'appariement se fait sur les MU — mais il permet de le
+# recouper : voir `origine_du_point`.
+COL_CP_MACHINE = "Control point/Actual Value (None)"
 
-def profil(source, nom=None):
+# Au-delà de ce nombre de lignes à MU constante, le plateau n'est plus la
+# résolution du format (0,1 MU) mais un vrai arrêt de la dose. Les plateaux
+# pathologiques mesurés sur l'IMRT à neuf faisceaux se comptent en centaines.
+PLATEAU_LONG = 10
+
+
+def profil(source, nom=None, seance=None):
     """Un plan, aplati en séries comparables.
 
     `source` est un chemin **ou** un dataset pydicom déjà en mémoire : comparer
     des délivrances tout juste reconstituées n'a pas à passer par le disque.
+
+    `seance` est la séance de logs dont ce plan est issu, quand il en vient
+    d'une. Elle n'entre dans aucun calcul : elle permet seulement de remonter
+    d'un point de contrôle aux lignes de TRF qui l'ont produit.
     """
     etiquette = nom or (source.name if isinstance(source, pathlib.Path)
                         else pathlib.Path(str(source)).name)
@@ -69,7 +84,7 @@ def profil(source, nom=None):
         "role": "délivré" if derive else "plan",
         "mu": t["mu"], "lames": t["lames"], "bras": t["bras"],
         "decoupe": t["decoupe"], "mu_total": plan.mu_total(),
-        "bornes": bornes_des_lames(ds), "erreur": None,
+        "bornes": bornes_des_lames(ds), "seance": seance, "erreur": None,
     }
 
 
@@ -124,6 +139,173 @@ def ecarts(reference, autre):
     return np.array(medianes), np.array(p95), ecart[masque]
 
 
+# --------------------------------------------------------------------------
+# Du point de contrôle aux lignes de log
+#
+# La chaîne rejoue la grille du plan sur l'axe des MU réellement parcourues :
+# chaque point de contrôle vise une MU cumulée, et `np.interp` va chercher
+# la géométrie entre les deux lignes de log qui l'encadrent. Ce qui suit
+# refait ce chemin **en sens inverse**, pour montrer d'où sort la valeur
+# affichée plutôt que de la donner à croire.
+# --------------------------------------------------------------------------
+
+def situer_ligne(seance, rang):
+    """(fichier, ligne dans ce fichier) pour un rang de l'axe recollé."""
+    depart = 0
+    for f in seance["fichiers"]:
+        n = len(f["table"])
+        if rang < depart + n:
+            return f, rang - depart
+        depart += n
+    return seance["fichiers"][-1], len(seance["fichiers"][-1]["table"]) - 1
+
+
+def origine_du_point(seance, mu_cible):
+    """Les lignes de log derrière la géométrie interpolée à `mu_cible`.
+
+    Reproduit exactement l'encadrement de `np.interp` employé par
+    `Chaine._substituer` : borne droite par recherche binaire, si bien que sur
+    un plateau — plusieurs lignes à la même MU — c'est la **dernière** qui est
+    retenue. Vérifié : la valeur reconstruite ici et celle de `np.interp`
+    coïncident à 7·10⁻¹⁵ mm près sur les 111 points du plan VMAT public.
+
+    Rend aussi la taille du plateau, parce que c'est là que se loge la limite 2
+    de `chaine.py` : un long plateau signifie que la machine se repositionne
+    faisceau éteint, et que la géométrie retenue est celle de l'arrivée.
+    """
+    mu, _ = ArchiveTrf._delivrance(seance)
+    ordre = np.argsort(mu, kind="stable")
+    mu_trie = mu[ordre]
+
+    j = int(np.searchsorted(mu_trie, mu_cible, side="right"))
+    j = min(max(j, 1), len(mu_trie) - 1)
+    gauche, droite = j - 1, j
+    largeur = float(mu_trie[droite] - mu_trie[gauche])
+    poids = 0.0 if largeur <= 0 else (mu_cible - float(mu_trie[gauche])) / largeur
+
+    valeur = mu_trie[gauche]
+    debut = int(np.searchsorted(mu_trie, valeur, side="left"))
+    fin = int(np.searchsorted(mu_trie, valeur, side="right"))
+
+    rang = int(ordre[gauche])
+    fichier, ligne = situer_ligne(seance, rang)
+    table = fichier["table"]
+    cp_machine = (int(table[COL_CP_MACHINE].values[ligne])
+                  if COL_CP_MACHINE in table.columns else None)
+    return {
+        "rang_gauche": rang, "rang_droite": int(ordre[droite]),
+        "mu_gauche": float(mu_trie[gauche]), "mu_droite": float(mu_trie[droite]),
+        "poids": poids, "plateau": fin - debut,
+        "fichier": fichier, "ligne": ligne, "cp_machine": cp_machine,
+        "etat": (str(table[COL_ETAT].values[ligne])
+                 if COL_ETAT in table.columns else VIDE),
+    }
+
+
+def erreurs_au_point(seance, mu_cible, limite=20):
+    """Les écarts de position que la machine a elle-même relevés à cet instant.
+
+    Le TRF porte, pour chaque axe mécanique, un « Positional Error » à côté de
+    la position atteinte : c'est l'écart entre la consigne et le relevé, tel
+    que la machine le juge — pas un calcul de notre part.
+    """
+    o = origine_du_point(seance, mu_cible)
+    table = o["fichier"]["table"]
+    colonnes = [c for c in table.columns if "Positional Error" in c]
+    if not colonnes:
+        return o, [], 0
+
+    releve = table.iloc[o["ligne"]]
+    lignes = []
+    for c in colonnes:
+        erreur = float(releve[c])
+        axe = c.split("/")[0]
+        position = c.replace("Positional Error", "Scaled Actual")
+        lignes.append({
+            "axe": axe,
+            "position": (f"{float(releve[position]):.1f}"
+                         if position in table.columns else VIDE),
+            "écart": f"{erreur:+.2f}",
+            "unité": "deg" if c.endswith("(deg)") else "mm",
+            "_tri": abs(erreur),
+        })
+    non_nuls = sum(1 for l in lignes if l["_tri"] > 1e-9)
+    lignes.sort(key=lambda l: -l["_tri"])
+    for l in lignes:
+        del l["_tri"]
+    return o, lignes[:limite], non_nuls
+
+
+def detail_du_point(profil_delivre, index):
+    """D'où sort la géométrie affichée pour ce point de contrôle.
+
+    Rendu sous forme de lignes (intitulé, valeur) : le but est qu'on puisse
+    refaire le calcul à la main, pas qu'on fasse confiance au graphique.
+    """
+    mu = profil_delivre["mu"]
+    index = int(min(max(index, 0), len(mu) - 1))
+    cible = float(mu[index])
+
+    faisceau, rang_local = VIDE, VIDE
+    for numero, debut, fin in profil_delivre["decoupe"]:
+        if debut <= index < fin:
+            faisceau, rang_local = str(numero), f"{index - debut} / {fin - debut - 1}"
+            break
+
+    lignes = [
+        ("point de contrôle", f"{index} sur {len(mu) - 1}"),
+        ("faisceau", f"n° {faisceau}  ·  point {rang_local} du faisceau"),
+        ("MU cumulées visées", f"{cible:.2f} MU"),
+        ("angle de bras", f"{float(profil_delivre['bras'][index]):.1f}°"),
+    ]
+
+    seance = profil_delivre.get("seance")
+    if seance is None:
+        lignes.append(("origine", "plan lu depuis un DICOM : les lignes de log "
+                                  "n'accompagnent pas le fichier"))
+        return lignes
+
+    o = origine_du_point(seance, cible)
+    largeur = o["mu_droite"] - o["mu_gauche"]
+    lignes += [
+        ("fichier de log", o["fichier"]["nom"]),
+        ("ligne retenue", f"{o['ligne']}  ·  t ≈ {o['ligne'] * PAS_S:.2f} s "
+                          "après le début du fichier"),
+        ("encadrement", f"{o['mu_gauche']:.2f} → {o['mu_droite']:.2f} MU "
+                        f"(largeur {largeur:.2f} MU)"),
+        ("interpolation", f"valeur = gauche + {o['poids']:.3f} × (droite − gauche)"
+                          if largeur > 0 else
+                          "les deux bornes portent la même MU : valeur reprise telle quelle"),
+        ("état machine", o["etat"]),
+    ]
+    if o["cp_machine"] is not None:
+        # La machine numérote le SEGMENT qu'elle parcourt : son CP k va du
+        # point k−1 au point k du plan (mesuré : 0,06 MU d'écart médian sur
+        # l'arc VMAT public). Un point du plan tombe donc sur la frontière
+        # entre deux segments, et lire k ou k+1 est normal.
+        lignes.append(("CP compté par la machine",
+                       f"{o['cp_machine']}  ·  recoupement indépendant du "
+                       f"calcul. La machine numérote le segment parcouru, du "
+                       f"point {o['cp_machine'] - 1} au point {o['cp_machine']} "
+                       f"du plan : lire {index} ou {index + 1} est attendu ici."))
+    if o["plateau"] > 1:
+        duree = o["plateau"] * PAS_S
+        texte = (f"{o['plateau']} lignes de log portent cette même MU "
+                 f"({duree:.1f} s) ; c'est celle de la DERNIÈRE qui est retenue.")
+        if o["plateau"] < PLATEAU_LONG:
+            texte += (" Court : les MU sont enregistrées par pas de 0,1, "
+                      "deux ou trois lignes identiques sont la résolution du "
+                      "format, pas un arrêt.")
+        else:
+            texte += (" Long : la dose n'avance plus, mais les lames, elles, "
+                      "continuent de bouger — repositionnement entre segments. "
+                      "La géométrie retenue est celle de l'arrivée, pas du "
+                      "parcours (limite 2 de chaine.py).")
+        lignes.append(("plateau" if o["plateau"] < PLATEAU_LONG else "⚠ plateau",
+                       texte))
+    return lignes
+
+
 def escalier(positions, bornes):
     """Le bord d'un banc, en marches — une par lame.
 
@@ -137,6 +319,58 @@ def escalier(positions, bornes):
     return xs, ys
 
 
+def axe_des_cp(figure, mu, combien=9):
+    """Un second axe, en haut : les points de contrôle.
+
+    Les MU et les points de contrôle ne sont pas proportionnels — un point qui
+    n'irradie pas n'avance pas les MU — donc l'axe du haut ne peut pas être une
+    règle régulière. Chaque graduation est posée à la MU **réelle** de son point
+    de contrôle : l'espacement irrégulier qu'on y voit est l'information.
+
+    `matches` verrouille les deux axes, sinon un zoom sur l'un décalerait
+    silencieusement les graduations de l'autre.
+    """
+    n = len(mu)
+    if n < 2:
+        return
+    pas = max(1, round(n / combien))
+    reperes = list(range(0, n, pas))
+    # Le dernier point mérite sa graduation, mais le dernier repère régulier
+    # tombe souvent juste avant : les deux étiquettes se chevaucheraient. On
+    # remplace alors plutôt que d'ajouter.
+    if reperes[-1] != n - 1:
+        if n - 1 - reperes[-1] < pas / 2:
+            reperes[-1] = n - 1
+        else:
+            reperes.append(n - 1)
+    # Une trace transparente ancre l'axe : Plotly ne dessine pas un axe
+    # superposé auquel aucune trace n'est rattachée.
+    figure.add_trace(go.Scatter(
+        x=[float(mu[0]), float(mu[-1])], y=[None, None], xaxis="x2",
+        mode="lines", showlegend=False, hoverinfo="skip"))
+    figure.update_layout(xaxis2={
+        "overlaying": "x", "side": "top", "matches": "x",
+        "tickmode": "array",
+        "tickvals": [float(mu[i]) for i in reperes],
+        "ticktext": [str(i) for i in reperes],
+        "title": {"text": "point de contrôle", "font": {"size": 11}},
+        # Sans angle imposé, Plotly incline les étiquettes dès qu'il les croit
+        # à l'étroit : elles deviennent illisibles, ce qui ôte tout intérêt à
+        # ce second axe.
+        "tickangle": 0, "tickfont": {"size": 10},
+        "showgrid": False, "zeroline": False,
+    })
+
+
+def survol(nom, mu, unite):
+    """Le survol porte les deux repères, comme les deux axes."""
+    return {
+        "customdata": np.arange(len(mu)),
+        "hovertemplate": ("CP %{customdata} · %{x:.1f} MU · %{y:.2f} "
+                          + unite + "<extra>" + nom + "</extra>"),
+    }
+
+
 def figure_ecart(profils, reference, choisis, etat):
     figure = go.Figure()
     ref = profils[reference]
@@ -147,15 +381,16 @@ def figure_ecart(profils, reference, choisis, etat):
         figure.add_trace(go.Scatter(
             x=ref["mu"], y=medianes, mode="lines", name=nom,
             line={"color": COULEURS[rang % len(COULEURS)], "width": 1.8},
-            hovertemplate="%{x:.0f} MU · %{y:.2f} mm<extra>" + nom + "</extra>"))
+            **survol(nom, ref["mu"], "mm")))
     for _, _, fin in ref["decoupe"][:-1]:
         figure.add_vline(x=ref["mu"][fin - 1],
                          line={"width": 1, "dash": "dot", "color": GRIS})
+    axe_des_cp(figure, ref["mu"])
     figure.update_layout(
         xaxis_title="MU cumulées (référence)",
         yaxis_title="écart des lames, médiane (mm)",
-        height=320, template="plotly_white",
-        margin={"l": 60, "r": 20, "t": 20, "b": 45},
+        height=340, template="plotly_white", clickmode="event",
+        margin={"l": 60, "r": 20, "t": 42, "b": 45},
         legend={"orientation": "h", "y": -0.25})
     return figure
 
@@ -169,11 +404,13 @@ def figure_bras(profils, reference, choisis, etat):
         brut = profils[nom]["bras"] - ref["bras"]
         figure.add_trace(go.Scatter(
             x=ref["mu"], y=(brut + 180.0) % 360.0 - 180.0, mode="lines",
-            name=nom, line={"color": COULEURS[rang % len(COULEURS)], "width": 1.5}))
+            name=nom, line={"color": COULEURS[rang % len(COULEURS)], "width": 1.5},
+            **survol(nom, ref["mu"], "°")))
+    axe_des_cp(figure, ref["mu"])
     figure.update_layout(
         xaxis_title="MU cumulées (référence)", yaxis_title="écart de bras (°)",
-        height=250, template="plotly_white", showlegend=False,
-        margin={"l": 60, "r": 20, "t": 20, "b": 45})
+        height=270, template="plotly_white", showlegend=False, clickmode="event",
+        margin={"l": 60, "r": 20, "t": 42, "b": 45})
     return figure
 
 def figure_superposition(profils, reference, choisis, etat, index):
@@ -233,6 +470,138 @@ def bilan(profils, reference, choisis, etat):
             "écart de MU": f"{100 * (p['mu_total'] - ref['mu_total']) / ref['mu_total']:+.2f} %",
         })
     return lignes
+
+
+# --------------------------------------------------------------------------
+# Les commandes du point examiné, communes aux deux pages
+#
+# `Comparateur` et `Interface` montrent la même chose : les identifiants ne
+# diffèrent que par un préfixe. Écrire ces blocs une fois évite que les deux
+# pages se mettent à diverger l'une de l'autre.
+# --------------------------------------------------------------------------
+
+COLONNES_ERREURS = ("axe", "position", "écart", "unité")
+
+
+def index_pour_mu(mu, valeur):
+    """Le point de contrôle dont la MU cumulée est la plus proche."""
+    return int(np.argmin(np.abs(np.asarray(mu, dtype=float) - float(valeur))))
+
+
+def index_du_clic(clic):
+    """Le point de contrôle cliqué, ou None.
+
+    `pointIndex` est le rang du point dans sa courbe, donc directement le
+    numéro du point de contrôle — les courbes sont tracées sur la grille du
+    plan, un point par CP.
+
+    `customdata` est essayé d'abord mais ne suffit pas : **Dash ne le transmet
+    pas** dans `clickData` (relevé sur la requête réelle — elle ne porte que
+    `curveNumber`, `pointNumber`, `pointIndex`, `x`, `y`, `bbox`), alors même
+    que Plotly s'en sert côté navigateur pour le survol. S'appuyer dessus seul
+    rendait le clic sans effet.
+
+    La trace transparente qui ancre l'axe des CP porte `hoverinfo="skip"` : un
+    clic ne peut pas la désigner, et il n'y a donc pas de rang parasite à
+    écarter ici.
+    """
+    points = (clic or {}).get("points") or []
+    if not points:
+        return None
+    for cle in ("customdata", "pointIndex", "pointNumber"):
+        valeur = points[0].get(cle)
+        if valeur is not None:
+            return int(valeur)
+    return None
+
+
+def bloc_du_point(prefixe=""):
+    """Choisir le point examiné : par son numéro, ou par les MU cumulées."""
+    petit = {"fontSize": "12px", "opacity": .7, "display": "block",
+             "marginBottom": "2px"}
+    return html.Div([
+        html.Div([
+            html.Label("point de contrôle", style=petit),
+            dcc.Slider(id=f"{prefixe}point", min=0, max=1, step=1, value=0,
+                       tooltip={"placement": "bottom", "always_visible": False}),
+        ], style={"flex": "1"}),
+        html.Div([
+            html.Label("aller à — MU cumulées", style=petit),
+            # Pas de `debounce` : une valeur tapée doit partir tout de suite,
+            # comme partout ailleurs dans ces pages. Ce champ commande le
+            # curseur mais n'est pas recopié depuis lui : Dash refuse un cycle
+            # entre deux callbacks. La MU courante se lit sous le curseur.
+            dcc.Input(id=f"{prefixe}mu", type="number", step=0.1, min=0,
+                      placeholder="ex. 175.1",
+                      style={"width": "110px", "padding": "6px 8px",
+                             "fontSize": "13px", "borderRadius": "6px",
+                             "fontFamily": "ui-monospace, monospace",
+                             "border": "1px solid rgba(128,128,128,.45)"}),
+        ], style={"width": "120px"}),
+    ], style={"display": "flex", "gap": "20px", "alignItems": "flex-end",
+              "margin": "4px 0 2px"})
+
+
+def bloc_origine(prefixe=""):
+    """Sous le dessin des lames : d'où sort la valeur, et ce que la machine a relevé."""
+    return html.Div([
+        html.H4("D'où vient cette position", style={"marginTop": "18px",
+                                                    "marginBottom": "4px"}),
+        html.Div("Le chemin exact entre le plan et le log, pour ce point.",
+                 style={"fontSize": "12px", "opacity": .65}),
+        html.Div(id=f"{prefixe}detail", style={"margin": "10px 0 4px"}),
+        html.H4("Écarts relevés par la machine", style={"marginTop": "16px",
+                                                        "marginBottom": "4px"}),
+        html.Div(id=f"{prefixe}erreurs_entete",
+                 style={"fontSize": "12px", "opacity": .65, "marginBottom": "6px"}),
+        dash_table.DataTable(id=f"{prefixe}erreurs", sort_action="native",
+                             page_size=10, **TABLEAU,
+                             columns=[{"name": c, "id": c} for c in COLONNES_ERREURS]),
+    ])
+
+
+def rendu_detail(lignes):
+    """Les couples (intitulé, valeur) en lignes lisibles."""
+    return html.Div([
+        html.Div([
+            html.Div(intitule, style={"minWidth": "210px", "opacity": .6,
+                                      "fontSize": "11px", "textTransform": "uppercase",
+                                      "letterSpacing": ".05em", "paddingTop": "2px"}),
+            html.Div(str(valeur), style={"flex": "1", "fontSize": "13px",
+                                         "fontFamily": "ui-monospace, monospace"}),
+        ], style={"display": "flex", "gap": "12px", "padding": "3px 0",
+                  "borderBottom": "1px solid rgba(128,128,128,.14)"})
+        for intitule, valeur in lignes
+    ])
+
+
+def origine_affichee(profils, reference, choisis, index):
+    """Le détail et le tableau d'écarts pour le point examiné.
+
+    Rend (detail, entête du tableau, lignes du tableau). La séance examinée est
+    la première des sélectionnées qui porte ses logs : le plan de référence, lu
+    depuis un DICOM, n'en a pas — et c'est dit plutôt que masqué.
+    """
+    avec_logs = [n for n in (choisis or [])
+                 if n in profils and profils[n].get("seance") is not None]
+    examine = avec_logs[0] if avec_logs else reference
+    p = profils[examine]
+    detail = rendu_detail([("plan examiné", examine)] + detail_du_point(p, index))
+
+    seance = p.get("seance")
+    if seance is None:
+        return detail, ("Les écarts de position sont relevés dans le TRF. Ils "
+                        "n'apparaissent que pour une séance passée par l'onglet "
+                        "« Plan → export », qui garde le lien vers ses logs."), []
+
+    o, lignes, non_nuls = erreurs_au_point(seance, float(p["mu"][index]))
+    if not lignes:
+        return detail, "Ce log ne porte aucune colonne « Positional Error ».", []
+    entete = (f"{non_nuls} axe(s) en écart à cet instant · ligne {o['ligne']} de "
+              f"{o['fichier']['nom']}"
+              + (f" · CP machine {o['cp_machine']}" if o["cp_machine"] else "")
+              + f" · {len(lignes)} plus grands écarts affichés")
+    return detail, entete, lignes
 
 
 class Comparateur:
@@ -317,10 +686,14 @@ class Comparateur:
                 dcc.Graph(id="bras"),
 
                 html.H4("Superposition des ouvertures", style={"marginTop": "20px"}),
-                html.Div(id="legende", style={"fontSize": "12px", "opacity": .7}),
-                dcc.Slider(id="point", min=0, max=1, step=1, value=0,
-                           tooltip={"placement": "bottom", "always_visible": False}),
+                html.Div("Cliquer une courbe des deux graphiques ci-dessus amène "
+                         "ici le point de contrôle correspondant.",
+                         style={"fontSize": "12px", "opacity": .65}),
+                bloc_du_point(),
+                html.Div(id="legende", style={"fontSize": "12px", "opacity": .7,
+                                              "margin": "2px 0 4px"}),
                 dcc.Graph(id="superposition"),
+                bloc_origine(),
 
                 html.H4("Bilan", style={"marginTop": "20px"}),
                 dash_table.DataTable(id="bilan", sort_action="native", **TABLEAU,
@@ -447,20 +820,44 @@ class Comparateur:
                     max(1, len(self.profils[reference]["lames"]) - 1))
 
         @self.app.callback(
+            Output("point", "value"),
+            Input("mu", "value"),
+            Input("ecart", "clickData"), Input("bras", "clickData"),
+            State("reference", "value"), prevent_initial_call=True)
+        def _pointer(mu_voulue, clic_ecart, clic_bras, reference):
+            """Les trois façons de désigner un point aboutissent au curseur.
+
+            `reference` est en State, pas en Input : le curseur ne doit pas se
+            déplacer parce qu'on a changé de référence.
+            """
+            if not reference or reference not in self.profils:
+                return no_update
+            mu = self.profils[reference]["mu"]
+            declencheur = callback_context.triggered_id
+            if declencheur == "mu":
+                return no_update if mu_voulue is None else index_pour_mu(mu, mu_voulue)
+            index = index_du_clic(clic_ecart if declencheur == "ecart" else clic_bras)
+            return no_update if index is None else min(index, len(mu) - 1)
+
+        @self.app.callback(
             Output("superposition", "figure"), Output("legende", "children"),
+            Output("detail", "children"), Output("erreurs_entete", "children"),
+            Output("erreurs", "data"),
             Input("reference", "value"), Input("compares", "value"),
             Input("point", "value"))
         def _superposer(reference, choisis, index):
             if not reference or reference not in self.profils:
-                return go.Figure(), ""
+                return go.Figure(), "", "", "", []
             ref = self.profils[reference]
             index = min(int(index or 0), len(ref["lames"]) - 1)
             etat = comparables(self.profils, reference)
             legende = (f"point {index}/{len(ref['lames']) - 1} · "
                        f"{ref['mu'][index]:.1f} MU cumulées · "
-                       f"bras {ref['bras'][index]:.1f}°")
+                       f"bras {ref['bras'][index]:.1f}° (référence)")
+            detail, entete, erreurs = origine_affichee(
+                self.profils, reference, choisis or [], index)
             return (self._figure_superposition(reference, choisis or [], etat, index),
-                    legende)
+                    legende, detail, entete, erreurs)
 
     def lancer(self, debug=False):
         print(f"  http://127.0.0.1:{self.port}")
