@@ -24,7 +24,7 @@ import sys
 import numpy as np
 import plotly.graph_objects as go
 from dash import (Dash, Input, Output, State, callback_context,
-                  dash_table, dcc, html)
+                  dash_table, dcc, html, no_update)
 
 # La racine du dépôt sur le chemin : le paquet `noyau` s'importe alors
 # quel que soit le dossier depuis lequel on lance.
@@ -35,9 +35,11 @@ from noyau.chaine import Chaine  # noqa: E402
 from noyau.conventions import SONDAGES  # noqa: E402
 from noyau.ecrivain_dicom import EcrivainDicom  # noqa: E402
 
-from .comparateur_dicom import (bilan, comparables,  # noqa: E402
-                                figure_bras, figure_ecart,
-                                figure_superposition, profil)
+from .comparateur_dicom import (bilan, bloc_du_point,  # noqa: E402
+                                bloc_origine, comparables, figure_bras,
+                                figure_ecart, figure_superposition,
+                                index_du_clic, index_pour_mu,
+                                origine_affichee, profil)
 from .visualiseur_seances import (JEUX, TABLEAU, CacheSeances,  # noqa: E402
                                   carte, demander_chemin, etiquette)
 
@@ -230,10 +232,14 @@ class Interface:
                 html.H4("Écart d'angle de bras", style={"marginTop": "14px"}),
                 dcc.Graph(id="cmp_bras"),
                 html.H4("Superposition des ouvertures", style={"marginTop": "18px"}),
-                html.Div(id="cmp_legende", style={"fontSize": "12px", "opacity": .7}),
-                dcc.Slider(id="cmp_point", min=0, max=1, step=1, value=0,
-                           tooltip={"placement": "bottom", "always_visible": False}),
+                html.Div("Cliquer une courbe des deux graphiques ci-dessus amène "
+                         "ici le point de contrôle correspondant.",
+                         style={"fontSize": "12px", "opacity": .65}),
+                bloc_du_point("cmp_"),
+                html.Div(id="cmp_legende", style={"fontSize": "12px", "opacity": .7,
+                                                  "margin": "2px 0 4px"}),
                 dcc.Graph(id="cmp_superposition"),
+                bloc_origine("cmp_"),
                 html.H4("Bilan", style={"marginTop": "18px"}),
                 dash_table.DataTable(id="cmp_bilan", sort_action="native", **TABLEAU,
                                      columns=[{"name": c, "id": c} for c in
@@ -580,7 +586,10 @@ class Interface:
                     return rien + (f"❌ séance {rang + 1} : "
                                    f"{type(erreur).__name__} : {erreur}",)
                 nom = f"séance {rang + 1} · {seance['debut']:%Y-%m-%d %H:%M}"
-                profils[nom] = profil(ds, nom=nom)
+                # La séance suit son plan dérivé : c'est ce qui permet, dans
+                # l'onglet Comparer, de remonter d'un point de contrôle aux
+                # lignes de TRF qui l'ont produit.
+                profils[nom] = profil(ds, nom=nom, seance=seance)
                 ordre.append(nom)
 
             self.profils, self.ordre = profils, ordre
@@ -692,20 +701,46 @@ class Interface:
                     max(1, len(self.profils[reference]["lames"]) - 1))
 
         @app.callback(
+            Output("cmp_point", "value"),
+            Input("cmp_mu", "value"),
+            Input("cmp_ecart", "clickData"), Input("cmp_bras", "clickData"),
+            State("cmp_reference", "value"), prevent_initial_call=True)
+        def _pointer(mu_voulue, clic_ecart, clic_bras, reference):
+            """Les trois façons de désigner un point aboutissent au curseur.
+
+            `reference` est en State, pas en Input : le curseur ne doit pas se
+            déplacer parce qu'on a changé de référence.
+            """
+            if not reference or reference not in self.profils:
+                return no_update
+            mu = self.profils[reference]["mu"]
+            declencheur = callback_context.triggered_id
+            if declencheur == "cmp_mu":
+                return no_update if mu_voulue is None else index_pour_mu(mu, mu_voulue)
+            index = index_du_clic(
+                clic_ecart if declencheur == "cmp_ecart" else clic_bras)
+            return no_update if index is None else min(index, len(mu) - 1)
+
+        @app.callback(
             Output("cmp_superposition", "figure"), Output("cmp_legende", "children"),
+            Output("cmp_detail", "children"),
+            Output("cmp_erreurs_entete", "children"), Output("cmp_erreurs", "data"),
             Input("cmp_reference", "value"), Input("cmp_compares", "value"),
             Input("cmp_point", "value"))
         def _superposer(reference, choisis, index):
             if not reference or reference not in self.profils:
-                return go.Figure(), ""
+                return go.Figure(), "", "", "", []
             ref = self.profils[reference]
             index = min(int(index or 0), len(ref["lames"]) - 1)
             etat = comparables(self.profils, reference)
+            detail, entete, erreurs = origine_affichee(
+                self.profils, reference, choisis or [], index)
             return (figure_superposition(self.profils, reference, choisis or [],
                                          etat, index),
                     f"point {index}/{len(ref['lames']) - 1} · "
                     f"{ref['mu'][index]:.1f} MU cumulées · "
-                    f"bras {ref['bras'][index]:.1f}°")
+                    f"bras {ref['bras'][index]:.1f}° (référence)",
+                    detail, entete, erreurs)
 
     def lancer(self, debug=False):
         print(f"  http://127.0.0.1:{self.port}")
