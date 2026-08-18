@@ -12,6 +12,9 @@ import numpy as np
 COL_MU = "Step Dose/Actual Value (Mu)"
 COL_ETAT = "Linac State/Actual Value (None)"
 COL_BRAS = "Step Gantry/Scaled Actual (deg)"
+# Le compteur de points de contrôle que la machine tient elle-même. Il n'entre
+# dans aucun calcul — l'appariement se fait sur les MU — mais il recoupe.
+COL_CP = "Control point/Actual Value (None)"
 COL_COLLIMATEUR = "Step Collimator/Scaled Actual (deg)"
 COLS_MACHOIRES = ("X1 Diaphragm/Scaled Actual (mm)", "X2 Diaphragm/Scaled Actual (mm)")
 PAIRES = 80

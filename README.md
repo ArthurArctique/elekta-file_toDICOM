@@ -81,6 +81,7 @@ Chaine("plan.dcm", "SDD+xxxx.zip", sortie="delivres/").executer()
 | `lecteur_rtplan.py` | **`LecteurRtplan`** : un RT Plan — ses MU, sa trajectoire dépliée, son `ds` brut | `Chaine`, le comparateur |
 | `ecrivain_dicom.py` | **`EcrivainDicom`** : donne au dérivé une identité neuve. `preparer()` sans écrire, `ecrire()` avec contrôle du fichier écrit | `Chaine`, les pages |
 | `chaine.py` | **`Chaine`** : orchestre les trois — trouve les séances du plan, y substitue le mesuré, écrit | `main.py`, l'interface |
+| `tableaux.py` | Le plan et le log mis à plat, en tables CSV comparables | l'interface |
 
 La séparation qui compte : **`ArchiveTrf` ignore tout des plans**. Elle reçoit un
 total de MU et une empreinte de champ, et rend les séances compatibles. C'est ce
@@ -214,3 +215,21 @@ répertoire isolé, aucune route DICOM vers le réseau clinique.
 Le cache `seances/` contient des copies de TRF réels, et les `.dcm` produits
 portent les identifiants du patient d'origine. Le `.gitignore` exclut `*.trf`,
 `*.dcm`, `*.zip`, `data/`, `seances/` et `donnee_patient/`.
+
+### Les tables CSV
+
+Le bouton **« CSV : plan + logs »** sort la trajectoire à plat, pour l'ouvrir
+ailleurs. Un fichier pour le plan — un point de contrôle par ligne — et un par
+séance cochée — un échantillon de log par ligne. Les deux portent les mêmes
+colonnes afin de se tracer sur les mêmes axes.
+
+Une réserve sur `cumulative_meterset_weight` : côté plan c'est le tag DICOM
+(300A,0134), un poids sans unité de 0 à `FinalCumulativeMetersetWeight` ; côté
+log **ce tag n'existe pas**, la machine n'enregistre pas de poids mais des MU,
+et la colonne en porte donc les MU cumulées. Les deux ne se comparent pas
+valeur à valeur. C'est **`fraction_delivree`**, le rapport des deux, qui va de 0
+à 1 des deux côtés et sur lequel les trajectoires se superposent.
+
+Mesuré sur les données publiques, en rejouant l'angle de bras du log sur la
+grille du plan : 0,20° d'écart médian, 3,7° au pire — l'ordre de grandeur du
+retard du servomoteur.
