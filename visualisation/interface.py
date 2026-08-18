@@ -34,6 +34,7 @@ from noyau.archive_trf import ArchiveTrf  # noqa: E402
 from noyau.chaine import Chaine  # noqa: E402
 from noyau.conventions import SONDAGES  # noqa: E402
 from noyau.ecrivain_dicom import EcrivainDicom  # noqa: E402
+from noyau.tableaux import ecrire_csv, table_log, table_plan  # noqa: E402
 
 from .comparateur_dicom import (bilan, bloc_du_point,  # noqa: E402
                                 bloc_origine, comparables, figure_bras,
@@ -188,8 +189,19 @@ class Interface:
                 html.H4("Exporter", style={"marginTop": "18px"}),
                 ligne_chemin("choisir_sortie", "📂  Dossier de sortie…",
                              "chemin_sortie", "", "…ou coller le chemin du dossier"),
-                html.Button("Exporter la sélection", id="exporter", n_clicks=0,
-                            style=PRINCIPAL),
+                html.Div([
+                    html.Button("Exporter la sélection", id="exporter", n_clicks=0,
+                                style=PRINCIPAL),
+                    html.Button("⬇  CSV : plan + logs", id="exporter_csv",
+                                n_clicks=0, style=BOUTON),
+                ], style={"display": "flex", "gap": "8px", "alignItems": "center"}),
+                html.Div("Le CSV du plan donne un point de contrôle par ligne ; "
+                         "celui des logs, un échantillon par ligne. Les deux "
+                         "portent les mêmes colonnes — c'est « fraction_delivree » "
+                         "qui les rend superposables, la machine n'enregistrant "
+                         "pas de poids mais des MU.",
+                         style={"fontSize": "12px", "opacity": .65,
+                                "margin": "6px 0 0"}),
                 dcc.Loading(html.Div(id="etat_export",
                                      style={"fontSize": "12px", "minHeight": "18px",
                                             "margin": "10px 0"})),
@@ -513,7 +525,7 @@ class Interface:
             return dossier, ecrits, None
 
         @app.callback(
-            Output("etat_export", "children"),
+            Output("etat_export", "children", allow_duplicate=True),
             Input("exporter", "n_clicks"),
             State("trouvees", "selected_rows"), State("chemin_sortie", "value"),
             prevent_initial_call=True)
@@ -527,6 +539,54 @@ class Interface:
                 html.Div("UID neufs · UNAPPROVED · plans dérivés pour analyse, "
                          "à tenir hors de toute route DICOM clinique",
                          style={"opacity": .7}),
+            ])
+
+        @app.callback(
+            Output("etat_export", "children", allow_duplicate=True),
+            Input("exporter_csv", "n_clicks"),
+            State("trouvees", "selected_rows"), State("chemin_sortie", "value"),
+            prevent_initial_call=True)
+        def _exporter_csv(_c, choisies, sortie):
+            """Le plan et les logs des séances cochées, en tables plates.
+
+            Un seul fichier pour le plan — il ne dépend pas de la séance — et un
+            par séance retenue. Choisir la séance dans le tableau plutôt que la
+            désigner ici évite d'avoir à la nommer en dur.
+            """
+            if not self.appariees or self.chaine is None:
+                return "Chercher des séances d'abord."
+            if not choisies:
+                return "Aucune séance sélectionnée."
+            if not sortie or not sortie.strip():
+                return "Choisir d'abord un dossier de sortie."
+            dossier = pathlib.Path(sortie.strip().strip('"').strip("'"))
+            try:
+                dossier.mkdir(parents=True, exist_ok=True)
+            except Exception as erreur:
+                return f"❌ dossier inutilisable : {erreur}"
+
+            souche = self.chaine.plan.chemin.stem
+            ecrits = []
+            try:
+                chemin = dossier / f"{souche}_plan_points_de_controle.csv"
+                ecrire_csv(chemin, table_plan(self.chaine.plan,
+                                              self.chaine.fraction))
+                ecrits.append(chemin.name)
+                for rang in sorted(choisies):
+                    seance = self.appariees[rang]
+                    horodatage = seance.get("debut_local", seance["debut"])
+                    chemin = dossier / (f"{souche}_log_{horodatage:%Y%m%d_%H%M%S}"
+                                        f"_s{rang + 1:04d}.csv")
+                    ecrire_csv(chemin, table_log(seance))
+                    ecrits.append(chemin.name)
+            except Exception as erreur:
+                return f"❌ {type(erreur).__name__} : {erreur}"
+
+            return html.Div([
+                html.Div(f"✅ {len(ecrits)} CSV écrit(s) dans {dossier}/"),
+                html.Div(", ".join(ecrits), style={"opacity": .7}),
+                html.Div("Séparateur « ; » et BOM UTF-8 : Excel les ouvre "
+                         "directement.", style={"opacity": .7}),
             ])
 
         @app.callback(
