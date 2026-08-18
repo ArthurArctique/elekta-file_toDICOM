@@ -81,7 +81,7 @@ Chaine("plan.dcm", "SDD+xxxx.zip", sortie="delivres/").executer()
 | `lecteur_rtplan.py` | **`LecteurRtplan`** : un RT Plan — ses MU, sa trajectoire dépliée, son `ds` brut | `Chaine`, le comparateur |
 | `ecrivain_dicom.py` | **`EcrivainDicom`** : donne au dérivé une identité neuve. `preparer()` sans écrire, `ecrire()` avec contrôle du fichier écrit | `Chaine`, les pages |
 | `chaine.py` | **`Chaine`** : orchestre les trois — trouve les séances du plan, y substitue le mesuré, écrit | `main.py`, l'interface |
-| `tableaux.py` | Le plan et le log mis à plat, en tables CSV comparables | l'interface |
+| `tableaux.py` | Les TRF d'une séance mis à plat : table brute complète, et géométrie seule | l'interface |
 
 La séparation qui compte : **`ArchiveTrf` ignore tout des plans**. Elle reçoit un
 total de MU et une empreinte de champ, et rend les séances compatibles. C'est ce
@@ -345,18 +345,28 @@ portent les identifiants du patient d'origine. Le `.gitignore` exclut `*.trf`,
 
 ### Les tables CSV
 
-Le bouton **« CSV : plan + logs »** sort la trajectoire à plat, pour l'ouvrir
-ailleurs. Un fichier pour le plan — un point de contrôle par ligne — et un par
-séance cochée — un échantillon de log par ligne. Les deux portent les mêmes
-colonnes afin de se tracer sur les mêmes axes.
+Le bouton **« CSV : brut + géométrie »** sort deux fichiers par séance cochée.
 
-Une réserve sur `cumulative_meterset_weight` : côté plan c'est le tag DICOM
-(300A,0134), un poids sans unité de 0 à `FinalCumulativeMetersetWeight` ; côté
-log **ce tag n'existe pas**, la machine n'enregistre pas de poids mais des MU,
-et la colonne en porte donc les MU cumulées. Les deux ne se comparent pas
-valeur à valeur. C'est **`fraction_delivree`**, le rapport des deux, qui va de 0
-à 1 des deux côtés et sur lequel les trajectoires se superposent.
+| Fichier | Contenu |
+|---|---|
+| `*_brut_*.csv` | **Tout** le log : les 351 colonnes de la machine, toutes les lignes, fichiers d'une séance interrompue recollés bout à bout. La page « Séances » sans sa troncature à 400 lignes |
+| `*_geometrie_*.csv` | De quoi rejouer le mouvement : horodatage machine, bras, collimateur, mâchoires, 160 lames, MU cumulées |
 
-Mesuré sur les données publiques, en rejouant l'angle de bras du log sur la
-grille du plan : 0,20° d'écart médian, 3,7° au pire — l'ordre de grandeur du
-retard du servomoteur.
+Trois colonnes sont ajoutées en tête — `temps_s` (depuis le début de la séance,
+interruptions comprises), `ligne_dans_fichier`, `fichier` — et une à la fin,
+`mu_cumulees`.
+
+Cette dernière n'est pas la colonne brute : `Step Dose/Actual Value (Mu)`
+**repart de zéro à chaque faisceau et à chaque fichier**. Sur la séance
+interrompue du jeu public elle plafonne à 314 MU avec trois remises à zéro, là
+où la séance en vaut 426,4. `mu_cumulees` est l'axe recollé, celui-là même sur
+lequel la substitution interpole.
+
+Les positions gardent leur **nom et leur convention TRF**, pas ceux du DICOM :
+le log écrit l'angle de bras dans [−180, 180[ quand le plan l'écrit dans
+[0, 360[, et « X1/X2 Diaphragm » alimente le `ASYMY` du DICOM. Ces
+correspondances — et ce que le plan contient sans que le log l'ait — sont
+listées dans [correspondances_trf_dicom.txt](correspondances_trf_dicom.txt).
+
+Les fichiers sortent en `;` avec BOM UTF-8, pour qu'Excel les ouvre sans manip.
+Le brut pèse quelques mégaoctets.

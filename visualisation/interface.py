@@ -34,7 +34,8 @@ from noyau.archive_trf import ArchiveTrf  # noqa: E402
 from noyau.chaine import Chaine  # noqa: E402
 from noyau.conventions import SONDAGES  # noqa: E402
 from noyau.ecrivain_dicom import EcrivainDicom  # noqa: E402
-from noyau.tableaux import ecrire_csv, table_log, table_plan  # noqa: E402
+from noyau.tableaux import (ecrire_csv, table_brute,  # noqa: E402
+                            table_geometrie)
 
 from .comparateur_dicom import (bilan, bloc_du_point,  # noqa: E402
                                 bloc_origine, comparables, figure_bras,
@@ -192,14 +193,13 @@ class Interface:
                 html.Div([
                     html.Button("Exporter la sélection", id="exporter", n_clicks=0,
                                 style=PRINCIPAL),
-                    html.Button("⬇  CSV : plan + logs", id="exporter_csv",
+                    html.Button("⬇  CSV : brut + géométrie", id="exporter_csv",
                                 n_clicks=0, style=BOUTON),
                 ], style={"display": "flex", "gap": "8px", "alignItems": "center"}),
-                html.Div("Le CSV du plan donne un point de contrôle par ligne ; "
-                         "celui des logs, un échantillon par ligne. Les deux "
-                         "portent les mêmes colonnes — c'est « fraction_delivree » "
-                         "qui les rend superposables, la machine n'enregistrant "
-                         "pas de poids mais des MU.",
+                html.Div("Deux fichiers par séance cochée : le log entier, "
+                         "toutes colonnes et toutes lignes, fichiers recollés ; "
+                         "puis la seule géométrie — horodatage machine, bras, "
+                         "mâchoires, 160 lames, MU cumulées.",
                          style={"fontSize": "12px", "opacity": .65,
                                 "margin": "6px 0 0"}),
                 dcc.Loading(html.Div(id="etat_export",
@@ -547,11 +547,10 @@ class Interface:
             State("trouvees", "selected_rows"), State("chemin_sortie", "value"),
             prevent_initial_call=True)
         def _exporter_csv(_c, choisies, sortie):
-            """Le plan et les logs des séances cochées, en tables plates.
+            """Deux CSV par séance cochée : tout le log, puis sa géométrie.
 
-            Un seul fichier pour le plan — il ne dépend pas de la séance — et un
-            par séance retenue. Choisir la séance dans le tableau plutôt que la
-            désigner ici évite d'avoir à la nommer en dur.
+            Choisir la séance dans le tableau plutôt que la désigner ici évite
+            d'avoir à la nommer en dur.
             """
             if not self.appariees or self.chaine is None:
                 return "Chercher des séances d'abord."
@@ -568,17 +567,17 @@ class Interface:
             souche = self.chaine.plan.chemin.stem
             ecrits = []
             try:
-                chemin = dossier / f"{souche}_plan_points_de_controle.csv"
-                ecrire_csv(chemin, table_plan(self.chaine.plan,
-                                              self.chaine.fraction))
-                ecrits.append(chemin.name)
                 for rang in sorted(choisies):
                     seance = self.appariees[rang]
                     horodatage = seance.get("debut_local", seance["debut"])
-                    chemin = dossier / (f"{souche}_log_{horodatage:%Y%m%d_%H%M%S}"
-                                        f"_s{rang + 1:04d}.csv")
-                    ecrire_csv(chemin, table_log(seance))
-                    ecrits.append(chemin.name)
+                    marque = f"{horodatage:%Y%m%d_%H%M%S}_s{rang + 1:04d}"
+                    brute = table_brute(seance)
+                    for suffixe, table in (("brut", brute),
+                                           ("geometrie", table_geometrie(seance))):
+                        chemin = dossier / f"{souche}_{suffixe}_{marque}.csv"
+                        ecrire_csv(chemin, table)
+                        ecrits.append(f"{chemin.name} "
+                                      f"({len(table)}×{len(table.columns)})")
             except Exception as erreur:
                 return f"❌ {type(erreur).__name__} : {erreur}"
 
@@ -586,7 +585,9 @@ class Interface:
                 html.Div(f"✅ {len(ecrits)} CSV écrit(s) dans {dossier}/"),
                 html.Div(", ".join(ecrits), style={"opacity": .7}),
                 html.Div("Séparateur « ; » et BOM UTF-8 : Excel les ouvre "
-                         "directement.", style={"opacity": .7}),
+                         "directement. Le fichier brut fait quelques Mo — "
+                         "toutes les colonnes, toutes les lignes.",
+                         style={"opacity": .7}),
             ])
 
         @app.callback(

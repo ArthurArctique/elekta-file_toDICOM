@@ -1,0 +1,47 @@
+CE QUE LE RT PLAN A ET QUE LE TRF N'A PAS
+Note de travail, temporaire. Colonnes relevées sur les TRF v1 et v3 du jeu public.
+Le TRF enregistre ce que la machine a FAIT ; le plan décrit ce qu'elle DEVAIT faire.
+Aucune consigne n'est donc lisible dans le log — seulement le réalisé.
+
+  DICOM (plan)                     TRF                                    substitut retenu
+  ------------------------------   ------------------------------------   --------------------------------------------
+  CumulativeMetersetWeight         absent                                 mu_cumulees / total  (0 -> 1)
+  FinalCumulativeMetersetWeight    absent                                 total de MU de la séance
+  BeamMeterset (par faisceau)      absent                                 total réparti au prorata du plan   [!]
+  BeamNumber, bornes de faisceau   absent                                 remises à zéro de Step Dose
+  ControlPointIndex                Control point/Actual Value             recoupement seulement              [!]
+  GantryAngle                      Step Gantry/Scaled Actual (deg)        mod 360  (le log est en [-180,180[)
+  GantryRotationDirection          absent                                 non reconstruit                    [!]
+  BeamLimitingDeviceAngle          Step Collimator/Scaled Actual (deg)    mod 360
+  LeafJawPositions  MLCX           Y1/Y2 Leaf n/Scaled Actual (mm)        mlc_vers_dicom : banc renversé, signe inversé
+  LeafJawPositions  ASYMY          X1/X2 Diaphragm/Scaled Actual (mm)     machoires_vers_dicom               [!]
+  DoseRateSet                      Actual Dose Rate/Actual Value          mesuré, pas consigne
+  NominalBeamEnergy                Energy Cal Block/Set                   index de bloc, pas une énergie en MV
+  PatientSupportAngle              Table Isocentric/Scaled Actual (deg)   direct
+  TableTop* (position table)       Table Longitudinal / Lateral / Height  [!] annoncées en (deg), translations comprises
+  Patient, UID, prescription       absent                                 repris tels quels du plan
+
+  [!] les cinq points où le substitut n'est PAS équivalent :
+
+  BeamMeterset     le facteur MU délivrées / MU prévues est global. Un seul faisceau écourté
+                   étale son écart sur tous. Ne pas lire « MU relevées pour ce faisceau ».
+  ControlPointIndex  la machine numérote le SEGMENT parcouru : son CP k va du point k-1 au
+                   point k du plan (0,06 MU d'écart médian), et repart à 1 à chaque fichier.
+                   L'appariement se fait sur les MU, pas sur ce compteur.
+  RotationDirection  garde le sens du plan alors que les angles, eux, sont mesurés.
+  ASYMY            le « X » du TRF donne le « Y » du DICOM. Inversion de nom, pas d'axe.
+  Table*           l'unité (deg) du TRF est douteuse pour Longitudinal/Lateral/Height.
+                   Non exploitées par la chaîne.
+
+CE QUE LE TRF A ET QUE LE PLAN N'A PAS
+  ms                            horloge machine, ms depuis l'allumage (absente en v1)
+  Linac State/Actual Value      Radiation On, Terminated Ok, Intersegment… — sert au découpage en séances
+  <axe>/Positional Error        écart consigne/relevé jugé par la machine, sur 170 axes
+  Dose/Raw value (1/64th Mu)    la dose avant mise à l'échelle
+  PRF Pauses, Wedge Position    état de la délivrance
+  Dlg Y1, Dlg Y2                gardes de lames (dynamic leaf guard)
+
+REPÈRES DE VOLUME (jeu public)
+  TRF v3 : 351 colonnes dont 160 positions de lames et 170 erreurs de position.
+  TRF v1 : 350 colonnes, pas de ms — la durée retombe sur « lignes × 40 ms ».
+  Une séance = 2 700 à 3 200 lignes à 25 Hz, contre 111 points de contrôle au plan.

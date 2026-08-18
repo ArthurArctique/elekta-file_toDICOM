@@ -1,137 +1,117 @@
-"""Le plan et le log mis à plat, en tables exportables.
+"""Les TRF d'une séance mis à plat, en tables exportables.
 
-    from noyau import table_plan, table_log, ecrire_csv
-    ecrire_csv("plan.csv", table_plan(LecteurRtplan("plan.dcm")))
-    ecrire_csv("log.csv", table_log(seance))
+    from noyau import table_brute, table_geometrie, ecrire_csv
+    ecrire_csv("brut.csv", table_brute(seance))
+    ecrire_csv("geometrie.csv", table_geometrie(seance))
 
-Deux tables, une par source, pour sortir la trajectoire et l'ouvrir ailleurs —
-tableur, R, ce qu'on veut. Elles portent **les mêmes noms de colonnes** afin de
-se tracer sur les mêmes axes.
+Deux tables, du même matériau :
 
-Ce que « CumulativeMetersetWeight » veut dire de chaque côté
------------------------------------------------------------
-Côté plan, c'est le tag DICOM (300A,0134) : un poids sans unité qui va de 0 à
-`FinalCumulativeMetersetWeight` (souvent 1,0). Il ne dit pas des MU, il dit une
-**proportion** de la dose du faisceau.
+`table_brute` rend **tout** ce que les TRF de la séance contiennent — les 350 et
+quelques colonnes, toutes les lignes, les fichiers recollés bout à bout. C'est
+la page « Séances » sans sa troncature à 400 lignes ni son choix de colonnes.
 
-Côté log, ce tag n'existe pas — la machine n'enregistre pas de poids, elle
-enregistre des MU. La colonne porte donc les MU cumulées, et
-`final_cumulative_meterset_weight` le total de la séance. Les deux fichiers ne
-sont donc pas comparables colonne à colonne sur cette valeur brute : c'est
-`fraction_delivree`, le rapport des deux, qui l'est. Elle vaut 0 au départ et 1
-à l'arrivée des deux côtés, et c'est sur elle que les trajectoires se
-superposent.
+`table_geometrie` n'en garde que de quoi rejouer le mouvement : l'horodatage
+machine, l'angle de bras, les mâchoires, les 160 lames, et les MU cumulées.
 
-`mu_cumulees` fait le pont dans l'autre sens : côté plan, il est reconstitué en
-multipliant le poids par le `BeamMeterset` de la fraction, ce que fait déjà
-`LecteurRtplan.grille`.
+Les MU cumulées ne sont pas la colonne brute
+--------------------------------------------
+`Step Dose/Actual Value (Mu)` **repart de zéro à chaque faisceau**, et repart
+aussi à chaque fichier d'une séance interrompue. La colonne `mu_cumulees`
+ajoutée ici est l'axe recollé d'`ArchiveTrf._delivrance` : écarts négatifs
+neutralisés, chaque fragment décalé du total des précédents. C'est exactement
+l'axe sur lequel la substitution interpole — pas un second calcul.
+
+Ce que le TRF ne contient pas, et par quoi on le remplace, est résumé dans
+`correspondances_trf_dicom.txt`, à la racine.
 """
 
-import csv
-
 import numpy as np
+import pandas as pd
 
 from .archive_trf import ArchiveTrf
-from .conventions import COL_BRAS, COL_CP, PAS_S
+from .conventions import COL_BRAS, COL_COLLIMATEUR, COLS_MACHOIRES, PAIRES, PAS_S
 
-COLONNES_PLAN = ("faisceau", "point_de_controle", "angle_bras_deg",
-                 "cumulative_meterset_weight", "final_cumulative_meterset_weight",
-                 "fraction_delivree", "mu_cumulees")
-COLONNES_LOG = ("temps_s", "fichier", "cp_machine", "angle_bras_deg",
-                "cumulative_meterset_weight", "final_cumulative_meterset_weight",
-                "fraction_delivree")
+COL_MS = "ms"
 
 
-def table_plan(plan, fraction=1):
-    """Un point de contrôle par ligne, tel que le plan les écrit.
+def _colonnes_lames():
+    """Les 160 colonnes de position de lames, bancs Y1 puis Y2."""
+    return ([f"Y1 Leaf {i}/Scaled Actual (mm)" for i in range(1, PAIRES + 1)]
+            + [f"Y2 Leaf {i}/Scaled Actual (mm)" for i in range(1, PAIRES + 1)])
 
-    L'angle de bras est **reporté** d'un point au suivant : un point de
-    contrôle n'écrit que ce qui change, et un plan qui omet `GantryAngle` sur
-    un point inchangé laisserait sinon un trou là où l'angle est simplement
-    resté le même.
+
+def _temps_et_mu(seance):
+    """Par fichier : (table, temps en s depuis le début de la séance).
+
+    L'origine est prise sur les fichiers eux-mêmes, jamais sur
+    `seance["debut"]` : selon l'appelant ce champ porte l'UTC ou l'heure locale,
+    alors que `f["debut"]` est toujours en UTC. Les mélanger décalait tout le
+    temps du fuseau de la machine.
+
+    Le temps inclut les interruptions — chaque fichier est replacé par son
+    propre horodatage —, sans quoi une séance reprise après vingt minutes
+    paraîtrait continue.
     """
-    par_numero = {int(f.BeamNumber): f for f in plan.ds.BeamSequence}
-    lignes = []
-    for bloc in plan.grille(fraction):
-        faisceau = par_numero[bloc["numero"]]
-        finale = float(faisceau.FinalCumulativeMetersetWeight)
-        angle = None
-        for index, cp in enumerate(faisceau.ControlPointSequence):
-            if "GantryAngle" in cp:
-                angle = float(cp.GantryAngle)
-            poids = float(cp.CumulativeMetersetWeight)
-            lignes.append({
-                "faisceau": bloc["numero"],
-                # Le numéro que porte le point, pas son rang dans la séquence :
-                # ils coïncident ici mais rien ne l'impose.
-                "point_de_controle": int(getattr(cp, "ControlPointIndex", index)),
-                "angle_bras_deg": "" if angle is None else round(angle, 4),
-                "cumulative_meterset_weight": round(poids, 6),
-                "final_cumulative_meterset_weight": round(finale, 6),
-                "fraction_delivree": round(poids / finale, 6) if finale else "",
-                "mu_cumulees": round(float(bloc["cibles"][index]), 4),
-            })
-    return lignes
-
-
-def table_log(seance):
-    """Un échantillon de log par ligne, dans l'ordre où la machine l'a écrit.
-
-    Les MU viennent de l'axe recollé d'`ArchiveTrf._delivrance` : remises à
-    zéro entre faisceaux neutralisées, fragments décalés du total des
-    précédents. C'est exactement l'axe sur lequel la substitution interpole,
-    pas un second calcul.
-
-    Le temps court depuis le début de la séance, interruptions comprises :
-    chaque fichier est replacé par son propre horodatage, sans quoi une séance
-    reprise après vingt minutes paraîtrait continue.
-
-    Cette origine est prise sur les fichiers eux-mêmes, jamais sur
-    `seance["debut"]` : selon l'appelant ce champ porte l'UTC ou l'heure
-    locale, alors que `f["debut"]` est toujours en UTC. Les mélanger décalait
-    tout le temps du fuseau de la machine — dix heures sur les données
-    publiques, et des temps négatifs en tête de fichier.
-
-    L'angle de bras est ramené dans [0, 360[ comme le fait déjà la
-    substitution. Sans cela le log annonce −180° là où le plan écrit 180° : le
-    même angle, et un écart apparent de 360° au tracé.
-    """
-    mu, _ = ArchiveTrf._delivrance(seance)
-    total = float(mu[-1])
-    depart_seance = min(f["debut"] for f in seance["fichiers"])
-
-    lignes, rang = [], 0
+    depart = min(f["debut"] for f in seance["fichiers"])
     for f in seance["fichiers"]:
-        table = f["table"]
-        bras = np.mod(table[COL_BRAS].values.astype(float), 360.0)
-        cps = table[COL_CP].values if COL_CP in table.columns else None
-        decalage = (f["debut"] - depart_seance).total_seconds()
-        for i in range(len(table)):
-            cumul = float(mu[rang])
-            lignes.append({
-                "temps_s": round(decalage + i * PAS_S, 3),
-                "fichier": f["nom"],
-                "cp_machine": "" if cps is None else int(cps[i]),
-                "angle_bras_deg": round(float(bras[i]), 4),
-                "cumulative_meterset_weight": round(cumul, 4),
-                "final_cumulative_meterset_weight": round(total, 4),
-                "fraction_delivree": round(cumul / total, 6) if total else "",
-            })
-            rang += 1
-    return lignes
+        decalage = (f["debut"] - depart).total_seconds()
+        temps = decalage + np.arange(len(f["table"])) * PAS_S
+        yield f, np.round(temps, 3)
 
 
-def ecrire_csv(chemin, lignes, colonnes=None):
+def table_brute(seance):
+    """Tout le contenu des TRF de la séance, fichiers recollés.
+
+    Les colonnes sont celles que la machine écrit, sous leur nom d'origine :
+    c'est la table de référence, on n'y touche pas. Seules trois colonnes sont
+    ajoutées en tête pour situer chaque ligne — le fichier dont elle vient, son
+    rang dans ce fichier, et le temps écoulé depuis le début de la séance.
+
+    `pandas.concat` aligne les colonnes par leur nom : si deux fichiers d'une
+    même séance n'avaient pas exactement le même jeu — un v1 et un v3 mêlés, par
+    exemple —, les manquantes seraient vides plutôt que décalées.
+    """
+    morceaux = []
+    for f, temps in _temps_et_mu(seance):
+        bloc = f["table"].copy()
+        bloc.insert(0, "temps_s", temps)
+        bloc.insert(1, "ligne_dans_fichier", np.arange(len(bloc)))
+        bloc.insert(2, "fichier", f["nom"])
+        morceaux.append(bloc)
+    table = pd.concat(morceaux, ignore_index=True, sort=False)
+
+    # Les MU cumulées valent la peine d'être là aussi : la colonne brute
+    # repart de zéro, celle-ci non.
+    mu, _ = ArchiveTrf._delivrance(seance)
+    table["mu_cumulees"] = np.round(mu, 4)
+    return table
+
+
+def table_geometrie(seance):
+    """De quoi rejouer le mouvement, et rien d'autre.
+
+    Les positions gardent leur nom TRF plutôt qu'un nom DICOM : elles sont dans
+    la convention de la machine, pas celle du plan — bancs et signes diffèrent,
+    et « X1/X2 Diaphragm » alimente le `ASYMY` du DICOM, pas son `ASYMX`. Les
+    renommer ici laisserait croire à une équivalence qui demande une conversion.
+    """
+    table = table_brute(seance)
+    voulues = (["temps_s", "fichier", "ligne_dans_fichier"]
+               + ([COL_MS] if COL_MS in table.columns else [])
+               + [COL_BRAS, COL_COLLIMATEUR]
+               + [c for c in COLS_MACHOIRES if c in table.columns]
+               + [c for c in _colonnes_lames() if c in table.columns]
+               + ["mu_cumulees"])
+    return table[[c for c in voulues if c in table.columns]]
+
+
+def ecrire_csv(chemin, table):
     """Écrit la table. Point-virgule et BOM : Excel francophone ouvre alors seul.
 
     Sans le BOM, Excel lit l'UTF-8 comme du latin-1 et abîme les accents ; avec
     la virgule pour séparateur, il met toute la ligne dans une seule colonne.
     """
-    if not lignes and colonnes is None:
-        raise ValueError("table vide et colonnes non précisées")
-    colonnes = list(colonnes or lignes[0].keys())
-    with open(chemin, "w", encoding="utf-8-sig", newline="") as fichier:
-        greffier = csv.DictWriter(fichier, fieldnames=colonnes, delimiter=";")
-        greffier.writeheader()
-        greffier.writerows(lignes)
+    if not isinstance(table, pd.DataFrame):
+        table = pd.DataFrame(list(table))
+    table.to_csv(chemin, sep=";", index=False, encoding="utf-8-sig")
     return chemin
